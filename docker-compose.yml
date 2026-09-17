@@ -1,0 +1,22 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: adplaylist-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: adplaylist_root
+      MYSQL_DATABASE: adplaylist
+      MYSQL_USER: adplaylist
+      MYSQL_PASSWORD: adplaylist
+    ports:
+      - "3309:3306"
+    volumes:
+      - adplaylist_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padplaylist_root"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  adplaylist_mysql_data:
