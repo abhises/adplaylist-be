@@ -10,3 +10,4 @@ yarn-error.log*
 .antigravity/
 .cortex/
 .jetski/
+uploads/
