@@ -1,0 +1,34 @@
+name: Deploy backend to Cloudways
+
+# Runs whenever main is updated (a direct push, or a merged PR) and deploys
+# the current main to the Cloudways server over SSH, then restarts it under
+# pm2. See DEPLOY.md in this repo for the one-time server/secrets setup this
+# workflow depends on.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CLOUDWAYS_SSH_HOST }}
+          username: ${{ secrets.CLOUDWAYS_SSH_USER }}
+          key: ${{ secrets.CLOUDWAYS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd "${{ secrets.BE_DEPLOY_PATH }}"
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            npm run db:migrate
+            pm2 describe adplaylist-be > /dev/null \
+              && pm2 restart adplaylist-be --update-env \
+              || pm2 start dist/index.js --name adplaylist-be
+            pm2 save
