@@ -22,13 +22,24 @@ jobs:
           script_stop: true
           script: |
             set -e
+            # This Cloudways app user can't write to $HOME (only public_html/
+            # private_html/tmp), and the system Node (v20) is too old for this
+            # repo's TypeScript, so pm2/npm-cache/Node itself all live under
+            # private_html via nvm. See DEPLOY.md for how that was set up.
+            export NVM_DIR=~/private_html/.nvm
+            export NPM_CONFIG_CACHE=~/private_html/.npm-cache
+            export PM2_HOME=~/private_html/.pm2
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm use 22 > /dev/null
+            PM2=~/private_html/.npm-global/bin/pm2
+
             cd "${{ secrets.BE_DEPLOY_PATH }}"
             git fetch origin main
             git reset --hard origin/main
             npm ci
             npm run build
             npm run db:migrate
-            pm2 describe adplaylist-be > /dev/null \
-              && pm2 restart adplaylist-be --update-env \
-              || pm2 start dist/index.js --name adplaylist-be
-            pm2 save
+            "$PM2" describe adplaylist-be > /dev/null \
+              && "$PM2" restart adplaylist-be --update-env \
+              || "$PM2" start dist/index.js --name adplaylist-be
+            "$PM2" save
