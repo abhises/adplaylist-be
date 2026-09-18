@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS creative_requests (
   status VARCHAR(30) NOT NULL DEFAULT 'Open',
   reason TEXT,
   attachment_url VARCHAR(500),
+  attachment_name VARCHAR(255),
   ad_id INT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

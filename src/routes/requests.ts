@@ -17,6 +17,7 @@ function toRequestResponse(row: RowDataPacket, ad?: RowDataPacket) {
     status: row.status,
     reason: row.reason ?? undefined,
     attachmentUrl: row.attachment_url ?? undefined,
+    attachmentName: row.attachment_name ?? undefined,
     ad: ad ? toAdResponse(ad) : undefined,
     createdAt: row.created_at,
   };
@@ -46,14 +47,15 @@ router.get("/", requireAuth, async (req: AuthedRequest, res) => {
 });
 
 router.post("/", requireAuth, async (req: AuthedRequest, res) => {
-  const { title, sizeNeeded, neededBy, notes, attachmentUrl } = req.body ?? {};
+  const { title, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
+    req.body ?? {};
   if (!title) {
     return res.status(400).json({ error: "Title is required" });
   }
 
   const [result] = await pool.query(
-    `INSERT INTO creative_requests (user_id, title, type, size_needed, needed_by, notes, status, attachment_url)
-     VALUES (?, ?, 'New creative', ?, ?, ?, 'Open', ?)`,
+    `INSERT INTO creative_requests (user_id, title, type, size_needed, needed_by, notes, status, attachment_url, attachment_name)
+     VALUES (?, ?, 'New creative', ?, ?, ?, 'Open', ?, ?)`,
     [
       req.userId,
       title,
@@ -61,6 +63,7 @@ router.post("/", requireAuth, async (req: AuthedRequest, res) => {
       neededBy ?? null,
       notes ?? null,
       attachmentUrl ?? null,
+      attachmentName ?? null,
     ]
   );
 
