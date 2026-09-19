@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Ad {
+  id               Int                @id @default(autoincrement())
+  slug             String             @unique(map: "slug") @db.VarChar(150)
+  title            String             @db.VarChar(255)
+  format           String             @db.VarChar(100)
+  variant          String             @db.VarChar(20)
+  eyebrow          String?            @db.VarChar(100)
+  headline         String             @db.VarChar(255)
+  sub              String?            @db.VarChar(255)
+  cta              String?            @db.VarChar(100)
+  badge            String?            @db.VarChar(100)
+  mediaType        String             @map("media_type") @db.VarChar(10)
+  swatch           String             @db.VarChar(255)
+  light            Boolean            @default(false)
+  category         String             @db.VarChar(100)
+  market           String             @db.VarChar(10)
+  language         String             @default("English (EN)") @db.VarChar(50)
+  photoUrl         String?            @map("photo_url") @db.VarChar(500)
+  platforms        String             @db.VarChar(255)
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamp(0)
+  editable         Boolean            @default(false)
+  dominantColor    String?            @map("dominant_color") @db.VarChar(30)
+  videoLength      String?            @map("video_length") @db.VarChar(20)
+  canvaUrl         String?            @map("canva_url") @db.VarChar(500)
+  creativeRequests CreativeRequest[]
+  savedAds         SavedAd[]
+
+  @@map("ads")
+}
+
+model CreativeRequest {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  title          String    @db.VarChar(255)
+  type           String    @default("New creative") @db.VarChar(50)
+  sizeNeeded     String?   @map("size_needed") @db.VarChar(150)
+  neededBy       DateTime? @map("needed_by") @db.Date
+  notes          String?   @db.Text
+  status         String    @default("Open") @db.VarChar(30)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  reason         String?   @db.Text
+  adId           Int?      @map("ad_id")
+  attachmentUrl  String?   @map("attachment_url") @db.VarChar(500)
+  attachmentName String?   @map("attachment_name") @db.VarChar(255)
+  ad             Ad?       @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
+
+  @@index([adId], map: "fk_requests_ad")
+  @@index([userId], map: "fk_requests_user")
+  @@map("creative_requests")
+}
+
+model SavedAd {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  adId      Int      @map("ad_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  ad        Ad       @relation(fields: [adId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_saved_ads_ad")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_saved_ads_user")
+
+  @@unique([userId, adId], map: "uniq_user_ad")
+  @@index([adId], map: "fk_saved_ads_ad")
+  @@map("saved_ads")
+}
+
+model User {
+  id               Int               @id @default(autoincrement())
+  email            String            @unique(map: "email") @db.VarChar(255)
+  passwordHash     String            @map("password_hash") @db.VarChar(255)
+  fullName         String            @map("full_name") @db.VarChar(255)
+  defaultLanguage  String            @default("English (EN)") @map("default_language") @db.VarChar(50)
+  gridDensity      String            @default("Comfortable") @map("grid_density") @db.VarChar(20)
+  prefOnboarding   Boolean           @default(true) @map("pref_onboarding")
+  prefProduct      Boolean           @default(true) @map("pref_product")
+  prefPromotions   Boolean           @default(false) @map("pref_promotions")
+  prefBrand        Boolean           @default(true) @map("pref_brand")
+  prefNewsletter   Boolean           @default(false) @map("pref_newsletter")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  creativeRequests CreativeRequest[]
+  savedAds         SavedAd[]
+
+  @@map("users")
+}

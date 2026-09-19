@@ -1,8 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import type { RowDataPacket } from "mysql2";
-import { pool } from "../db/pool.js";
+import { prisma } from "../lib/prisma.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { toUserResponse } from "./profile.js";
 
@@ -33,30 +32,18 @@ router.post("/register", async (req, res) => {
       .json({ error: "Password must be at least 8 characters" });
   }
 
-  const [existing] = await pool.query<RowDataPacket[]>(
-    "SELECT id FROM users WHERE email = ?",
-    [email]
-  );
-  if (existing[0]) {
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
     return res.status(409).json({ error: "An account with that email already exists" });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [result] = await pool.query(
-    "INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)",
-    [email, passwordHash, fullName.trim()]
-  );
-  const userId = (result as { insertId: number }).insertId;
+  const user = await prisma.user.create({
+    data: { email, passwordHash, fullName: fullName.trim() },
+  });
 
-  const token = signToken(userId);
+  const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
-
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT * FROM users WHERE id = ?",
-    [userId]
-  );
-  const user = rows[0];
-  if (!user) return res.status(500).json({ error: "Failed to create account" });
 
   res.status(201).json({ token, user: toUserResponse(user) });
 });
@@ -67,16 +54,12 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT * FROM users WHERE email = ?",
-    [email]
-  );
-  const user = rows[0];
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
-  const valid = await bcrypt.compare(password, user.password_hash);
+  const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
@@ -88,11 +71,7 @@ router.post("/login", async (req, res) => {
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res) => {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT * FROM users WHERE id = ?",
-    [req.userId]
-  );
-  const user = rows[0];
+  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
   if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ user: toUserResponse(user) });
 });

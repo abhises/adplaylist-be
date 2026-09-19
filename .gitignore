@@ -11,3 +11,5 @@ yarn-error.log*
 .cortex/
 .jetski/
 uploads/
+
+/src/generated/prisma

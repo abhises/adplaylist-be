@@ -1,81 +1,61 @@
 import { Router } from "express";
-import type { RowDataPacket } from "mysql2";
-import { pool } from "../db/pool.js";
+import { Prisma, type Ad } from "../generated/prisma/client.js";
+import { prisma } from "../lib/prisma.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
 
-export function toAdResponse(row: RowDataPacket) {
+export function toAdResponse(ad: Ad) {
   return {
-    id: row.slug,
-    title: row.title,
-    format: row.format,
-    variant: row.variant,
-    eyebrow: row.eyebrow ?? undefined,
-    headline: row.headline,
-    sub: row.sub ?? undefined,
-    cta: row.cta ?? undefined,
-    badge: row.badge ?? undefined,
-    mediaType: row.media_type,
-    swatch: row.swatch,
-    light: !!row.light,
-    category: row.category,
-    market: row.market,
-    language: row.language,
-    photo: row.photo_url ?? undefined,
-    platforms: row.platforms ? row.platforms.split(",") : [],
-    editable: !!row.editable,
-    canvaUrl: row.canva_url ?? undefined,
-    dominantColor: row.dominant_color ?? undefined,
-    videoLength: row.video_length ?? undefined,
-    createdAt: row.created_at,
+    id: ad.slug,
+    title: ad.title,
+    format: ad.format,
+    variant: ad.variant,
+    eyebrow: ad.eyebrow ?? undefined,
+    headline: ad.headline,
+    sub: ad.sub ?? undefined,
+    cta: ad.cta ?? undefined,
+    badge: ad.badge ?? undefined,
+    mediaType: ad.mediaType,
+    swatch: ad.swatch,
+    light: ad.light,
+    category: ad.category,
+    market: ad.market,
+    language: ad.language,
+    photo: ad.photoUrl ?? undefined,
+    platforms: ad.platforms ? ad.platforms.split(",") : [],
+    editable: ad.editable,
+    canvaUrl: ad.canvaUrl ?? undefined,
+    dominantColor: ad.dominantColor ?? undefined,
+    videoLength: ad.videoLength ?? undefined,
+    createdAt: ad.createdAt,
   };
 }
 
 router.get("/", async (req, res) => {
   const { category, market, language, mediaType, platform, q } = req.query;
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const where: Prisma.AdWhereInput = {};
 
-  if (typeof category === "string" && category) {
-    conditions.push("category = ?");
-    params.push(category);
-  }
-  if (typeof market === "string" && market) {
-    conditions.push("market = ?");
-    params.push(market);
-  }
-  if (typeof language === "string" && language) {
-    conditions.push("language = ?");
-    params.push(language);
-  }
-  if (typeof mediaType === "string" && mediaType) {
-    conditions.push("media_type = ?");
-    params.push(mediaType);
-  }
+  if (typeof category === "string" && category) where.category = category;
+  if (typeof market === "string" && market) where.market = market;
+  if (typeof language === "string" && language) where.language = language;
+  if (typeof mediaType === "string" && mediaType) where.mediaType = mediaType;
   if (typeof platform === "string" && platform) {
-    conditions.push("FIND_IN_SET(?, platforms)");
-    params.push(platform);
+    where.platforms = { contains: platform };
   }
   if (typeof q === "string" && q) {
-    conditions.push("(title LIKE ? OR headline LIKE ?)");
-    params.push(`%${q}%`, `%${q}%`);
+    where.OR = [
+      { title: { contains: q } },
+      { headline: { contains: q } },
+    ];
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM ads ${where} ORDER BY id ASC`,
-    params
-  );
-  res.json({ ads: rows.map(toAdResponse) });
+  const ads = await prisma.ad.findMany({ where, orderBy: { id: "asc" } });
+  res.json({ ads: ads.map(toAdResponse) });
 });
 
 router.get("/:slug", async (req, res) => {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT * FROM ads WHERE slug = ?",
-    [req.params.slug]
-  );
-  const ad = rows[0];
+  const ad = await prisma.ad.findUnique({ where: { slug: req.params.slug } });
   if (!ad) return res.status(404).json({ error: "Ad not found" });
   res.json({ ad: toAdResponse(ad) });
 });
@@ -115,48 +95,43 @@ router.post("/", requireAuth, async (req: AuthedRequest, res) => {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+  let created;
   try {
-    await pool.query(
-      `INSERT INTO ads
-        (slug, title, format, variant, eyebrow, headline, sub, cta, badge, media_type, swatch, light, category, market, language, photo_url, platforms, editable, canva_url, dominant_color, video_length)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    created = await prisma.ad.create({
+      data: {
         slug,
         title,
-        format ?? "Feed 1:1",
-        variant ?? "overlay",
-        eyebrow ?? null,
+        format: format ?? "Feed 1:1",
+        variant: variant ?? "overlay",
+        eyebrow: eyebrow ?? null,
         headline,
-        sub ?? null,
-        cta ?? null,
-        badge ?? null,
-        mediaType ?? "image",
-        swatch ?? "bg-neutral-800",
-        light ? 1 : 0,
+        sub: sub ?? null,
+        cta: cta ?? null,
+        badge: badge ?? null,
+        mediaType: mediaType ?? "image",
+        swatch: swatch ?? "bg-neutral-800",
+        light: !!light,
         category,
         market,
-        language ?? "English (EN)",
-        photo ?? null,
-        Array.isArray(platforms) ? platforms.join(",") : "",
-        editable ? 1 : 0,
-        canvaUrl ?? null,
-        dominantColor ?? null,
-        videoLength ?? null,
-      ]
-    );
+        language: language ?? "English (EN)",
+        photoUrl: photo ?? null,
+        platforms: Array.isArray(platforms) ? platforms.join(",") : "",
+        editable: !!editable,
+        canvaUrl: canvaUrl ?? null,
+        dominantColor: dominantColor ?? null,
+        videoLength: videoLength ?? null,
+      },
+    });
   } catch (err) {
-    if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
       return res.status(409).json({ error: "An ad with that name already exists" });
     }
     throw err;
   }
 
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT * FROM ads WHERE slug = ?",
-    [slug]
-  );
-  const created = rows[0];
-  if (!created) return res.status(500).json({ error: "Failed to create ad" });
   res.status(201).json({ ad: toAdResponse(created) });
 });
 

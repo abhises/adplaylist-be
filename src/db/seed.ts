@@ -1,7 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import type { RowDataPacket } from "mysql2";
-import { pool } from "./pool.js";
+import { prisma } from "../lib/prisma.js";
 
 const PLATFORM_OPTIONS = "META,Google,TikTok,LinkedIn";
 
@@ -292,108 +291,112 @@ async function seed() {
   console.log("Seeding database...");
 
   const passwordHash = await bcrypt.hash("password123", 10);
-  await pool.query(
-    `INSERT INTO users (email, password_hash, full_name)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
-    ["anna.smith@atlasmedia.co", passwordHash, "Anna Smith"]
-  );
+  const user = await prisma.user.upsert({
+    where: { email: "anna.smith@atlasmedia.co" },
+    update: { fullName: "Anna Smith" },
+    create: {
+      email: "anna.smith@atlasmedia.co",
+      passwordHash,
+      fullName: "Anna Smith",
+    },
+  });
 
   for (const ad of ADS) {
-    await pool.query(
-      `INSERT INTO ads
-        (slug, title, format, variant, eyebrow, headline, sub, cta, badge, media_type, swatch, light, category, market, language, photo_url, platforms, editable, dominant_color, video_length)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-        title = VALUES(title), format = VALUES(format), variant = VALUES(variant),
-        eyebrow = VALUES(eyebrow), headline = VALUES(headline), sub = VALUES(sub),
-        cta = VALUES(cta), badge = VALUES(badge), media_type = VALUES(media_type),
-        swatch = VALUES(swatch), light = VALUES(light), category = VALUES(category),
-        market = VALUES(market), language = VALUES(language), photo_url = VALUES(photo_url),
-        platforms = VALUES(platforms), editable = VALUES(editable),
-        dominant_color = VALUES(dominant_color), video_length = VALUES(video_length)`,
-      [
-        ad.slug,
-        ad.title,
-        ad.format,
-        ad.variant,
-        ad.eyebrow,
-        ad.headline,
-        ad.sub,
-        ad.cta,
-        ad.badge,
-        ad.mediaType,
-        ad.swatch,
-        ad.light ? 1 : 0,
-        ad.category,
-        ad.market,
-        "English (EN)",
-        ad.photo,
-        PLATFORM_OPTIONS,
-        ad.editable ? 1 : 0,
-        ad.dominantColor,
-        ad.videoLength,
-      ]
-    );
+    const data = {
+      title: ad.title,
+      format: ad.format,
+      variant: ad.variant,
+      eyebrow: ad.eyebrow,
+      headline: ad.headline,
+      sub: ad.sub,
+      cta: ad.cta,
+      badge: ad.badge,
+      mediaType: ad.mediaType,
+      swatch: ad.swatch,
+      light: ad.light,
+      category: ad.category,
+      market: ad.market,
+      language: "English (EN)",
+      photoUrl: ad.photo,
+      platforms: PLATFORM_OPTIONS,
+      editable: ad.editable,
+      dominantColor: ad.dominantColor,
+      videoLength: ad.videoLength,
+    };
+    await prisma.ad.upsert({
+      where: { slug: ad.slug },
+      update: data,
+      create: { slug: ad.slug, ...data },
+    });
   }
 
-  const [userRows] = await pool.query<RowDataPacket[]>(
-    "SELECT id FROM users WHERE email = ?",
-    ["anna.smith@atlasmedia.co"]
-  );
-  const userId = userRows[0]?.id;
-  if (userId === undefined) throw new Error("Seeded user not found");
+  const membersWeekend = await prisma.ad.findUniqueOrThrow({
+    where: { slug: "members-weekend" },
+  });
+  await prisma.savedAd.upsert({
+    where: { userId_adId: { userId: user.id, adId: membersWeekend.id } },
+    update: {},
+    create: { userId: user.id, adId: membersWeekend.id },
+  });
 
-  const [adRows] = await pool.query<RowDataPacket[]>(
-    "SELECT id FROM ads WHERE slug = ?",
-    ["members-weekend"]
-  );
-  const membersWeekendId = adRows[0]?.id;
-  if (membersWeekendId === undefined) throw new Error("Seeded ad not found");
-  await pool.query(
-    "INSERT IGNORE INTO saved_ads (user_id, ad_id) VALUES (?, ?)",
-    [userId, membersWeekendId]
-  );
-
-  const [countRows] = await pool.query<RowDataPacket[]>(
-    "SELECT COUNT(*) as count FROM creative_requests WHERE user_id = ?",
-    [userId]
-  );
-  const requestCount = countRows[0]?.count ?? 0;
+  const requestCount = await prisma.creativeRequest.count({
+    where: { userId: user.id },
+  });
   if (requestCount === 0) {
-    await pool.query(
-      `INSERT INTO creative_requests (user_id, title, type, size_needed, needed_by, status)
-       VALUES
-        (?, 'Long Walk Home in 728 x 90', 'New size', '728 x 90', '2026-09-18', 'In design'),
-        (?, 'Members Weekend — Swedish copy', 'Localisation', NULL, '2026-09-22', 'Awaiting brief'),
-        (?, 'Autumn boot range — story set', 'New creative', '1080 x 1920', '2026-09-30', 'In review')`,
-      [userId, userId, userId]
-    );
+    await prisma.creativeRequest.createMany({
+      data: [
+        {
+          userId: user.id,
+          title: "Long Walk Home in 728 x 90",
+          type: "New size",
+          sizeNeeded: "728 x 90",
+          neededBy: new Date("2026-09-18"),
+          status: "In design",
+        },
+        {
+          userId: user.id,
+          title: "Members Weekend — Swedish copy",
+          type: "Localisation",
+          neededBy: new Date("2026-09-22"),
+          status: "Awaiting brief",
+        },
+        {
+          userId: user.id,
+          title: "Autumn boot range — story set",
+          type: "New creative",
+          sizeNeeded: "1080 x 1920",
+          neededBy: new Date("2026-09-30"),
+          status: "In review",
+        },
+      ],
+    });
   }
 
   // A delivered example so the Requests page's Delivered tab has something
   // real to render (a request that resulted in an existing library ad),
   // added separately/idempotently since it postdates the block above.
-  const [deliveredRows] = await pool.query<RowDataPacket[]>(
-    "SELECT id FROM creative_requests WHERE user_id = ? AND title = ?",
-    [userId, "Long Walk Home — hero banner"]
-  );
-  if (deliveredRows.length === 0) {
-    const [heroAdRows] = await pool.query<RowDataPacket[]>(
-      "SELECT id FROM ads WHERE slug = ?",
-      ["long-walk-home"]
-    );
-    const heroAdId = heroAdRows[0]?.id;
-    if (heroAdId === undefined) throw new Error("Seeded ad not found");
-    await pool.query(
-      `INSERT INTO creative_requests (user_id, title, type, size_needed, needed_by, status, ad_id)
-       VALUES (?, 'Long Walk Home — hero banner', 'New creative', '1080 x 1080', '2026-09-05', 'Delivered', ?)`,
-      [userId, heroAdId]
-    );
+  const delivered = await prisma.creativeRequest.findFirst({
+    where: { userId: user.id, title: "Long Walk Home — hero banner" },
+  });
+  if (!delivered) {
+    const heroAd = await prisma.ad.findUniqueOrThrow({
+      where: { slug: "long-walk-home" },
+    });
+    await prisma.creativeRequest.create({
+      data: {
+        userId: user.id,
+        title: "Long Walk Home — hero banner",
+        type: "New creative",
+        sizeNeeded: "1080 x 1080",
+        neededBy: new Date("2026-09-05"),
+        status: "Delivered",
+        adId: heroAd.id,
+      },
+    });
   }
 
   console.log(`Seeded 1 user and ${ADS.length} ads.`);
-  await pool.end();
+  await prisma.$disconnect();
 }
 
 seed().catch((err) => {

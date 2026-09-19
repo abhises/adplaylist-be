@@ -13,7 +13,7 @@ import savedRoutes from "./routes/saved.js";
 import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
-import { pool } from "./db/pool.js";
+import { prisma } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,7 +45,7 @@ app.use(
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   try {
-    await pool.query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
     console.log("Connected to MySQL database");
   } catch (err) {
     console.error("Failed to connect to MySQL database:", err);
