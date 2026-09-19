@@ -25,6 +25,46 @@ const upload = multer({
 
 const router = Router();
 
+// The proxy in front of this API (Varnish/Apache, inherited from this app's
+// original PHP hosting) corrupts multipart/form-data bodies in transit —
+// verified by comparing a direct-to-localhost upload (succeeds) against the
+// same request through the public domain (fails with "Unexpected end of
+// form" regardless of file size). Browsers upload straight to Supabase
+// instead, using a short-lived signed URL issued here, so the file bytes
+// never pass through that proxy.
+router.post("/sign", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const { filename, contentType } = req.body ?? {};
+  if (typeof filename !== "string" || !filename.trim()) {
+    return res.status(400).json({ error: "filename is required" });
+  }
+  if (typeof contentType !== "string" || !ALLOWED_MIME.test(contentType)) {
+    return res.status(400).json({ error: "Unsupported file type" });
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  const key = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
+
+  const { data, error } = await supabase.storage
+    .from(UPLOADS_BUCKET)
+    .createSignedUploadUrl(key);
+
+  if (error || !data) {
+    console.error("Failed to create signed upload URL:", error);
+    return res.status(500).json({ error: "Could not prepare upload" });
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from(UPLOADS_BUCKET)
+    .getPublicUrl(key);
+
+  res.status(201).json({
+    path: key,
+    token: data.token,
+    signedUrl: data.signedUrl,
+    url: publicUrlData.publicUrl,
+  });
+});
+
 function handleUpload(req: Request, res: Response, next: NextFunction) {
   upload.single("file")(req, res, (err: unknown) => {
     if (err) {
