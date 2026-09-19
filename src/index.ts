@@ -14,6 +14,7 @@ import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
 import { pool } from "./db/pool.js";
+import { ensureUploadsBucket } from "./lib/supabase.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -48,5 +49,11 @@ app.listen(PORT, async () => {
     console.log("Connected to MySQL database");
   } catch (err) {
     console.error("Failed to connect to MySQL database:", err);
+  }
+  try {
+    await ensureUploadsBucket();
+    console.log(`Supabase storage bucket ready`);
+  } catch (err) {
+    console.error("Failed to set up Supabase storage bucket:", err);
   }
 });
