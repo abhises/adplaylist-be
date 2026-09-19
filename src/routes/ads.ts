@@ -24,6 +24,10 @@ export function toAdResponse(row: RowDataPacket) {
     language: row.language,
     photo: row.photo_url ?? undefined,
     platforms: row.platforms ? row.platforms.split(",") : [],
+    editable: !!row.editable,
+    canvaUrl: row.canva_url ?? undefined,
+    dominantColor: row.dominant_color ?? undefined,
+    videoLength: row.video_length ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -94,6 +98,10 @@ router.post("/", requireAuth, async (req: AuthedRequest, res) => {
     language,
     photo,
     platforms,
+    editable,
+    canvaUrl,
+    dominantColor,
+    videoLength,
   } = req.body ?? {};
 
   if (!title || !headline || !category || !market) {
@@ -110,8 +118,8 @@ router.post("/", requireAuth, async (req: AuthedRequest, res) => {
   try {
     await pool.query(
       `INSERT INTO ads
-        (slug, title, format, variant, eyebrow, headline, sub, cta, badge, media_type, swatch, light, category, market, language, photo_url, platforms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (slug, title, format, variant, eyebrow, headline, sub, cta, badge, media_type, swatch, light, category, market, language, photo_url, platforms, editable, canva_url, dominant_color, video_length)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         slug,
         title,
@@ -130,6 +138,10 @@ router.post("/", requireAuth, async (req: AuthedRequest, res) => {
         language ?? "English (EN)",
         photo ?? null,
         Array.isArray(platforms) ? platforms.join(",") : "",
+        editable ? 1 : 0,
+        canvaUrl ?? null,
+        dominantColor ?? null,
+        videoLength ?? null,
       ]
     );
   } catch (err) {

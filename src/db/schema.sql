@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS ads (
   language VARCHAR(50) NOT NULL DEFAULT 'English (EN)',
   photo_url VARCHAR(500),
   platforms VARCHAR(255) NOT NULL,
+  editable TINYINT(1) NOT NULL DEFAULT 0,
+  canva_url VARCHAR(500),
+  dominant_color VARCHAR(30),
+  video_length VARCHAR(20),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -54,6 +58,11 @@ CREATE TABLE IF NOT EXISTS creative_requests (
   needed_by DATE,
   notes TEXT,
   status VARCHAR(30) NOT NULL DEFAULT 'Open',
+  reason TEXT,
+  attachment_url VARCHAR(500),
+  attachment_name VARCHAR(255),
+  ad_id INT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_requests_ad FOREIGN KEY (ad_id) REFERENCES ads(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
