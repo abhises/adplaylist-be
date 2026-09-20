@@ -79,3 +79,8 @@ export const updateUserRoleSchema = Joi.object({
     .valid(...ROLES)
     .required(),
 });
+
+export const updateUserDetailsSchema = Joi.object({
+  fullName: Joi.string().trim().min(1).required(),
+  email: Joi.string().trim().email().required(),
+});

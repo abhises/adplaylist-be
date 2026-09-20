@@ -62,6 +62,24 @@ router.get("/:slug", async (req, res) => {
   res.json({ ad: toAdResponse(ad) });
 });
 
+// Deleting is admin-only (stricter than publishing, which designers can also
+// do): it removes any saved bookmarks for the ad and unlinks it from any
+// creative request it was delivered against, per the FK's ON DELETE rules.
+router.delete(
+  "/:slug",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res) => {
+    const ad = await prisma.ad.findUnique({
+      where: { slug: String(req.params.slug) },
+    });
+    if (!ad) return res.status(404).json({ error: "Ad not found" });
+
+    await prisma.ad.delete({ where: { id: ad.id } });
+    res.status(204).send();
+  }
+);
+
 router.post(
   "/",
   requireAuth,
