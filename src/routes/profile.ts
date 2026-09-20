@@ -12,6 +12,7 @@ export function toUserResponse(user: User) {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    role: user.role,
     defaultLanguage: user.defaultLanguage,
     gridDensity: user.gridDensity,
     memberSince: user.createdAt,

@@ -13,6 +13,7 @@ import savedRoutes from "./routes/saved.js";
 import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
+import adminRoutes from "./routes/admin.js";
 import { prisma } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
 
@@ -34,6 +35,7 @@ app.use("/api/saved", savedRoutes);
 app.use("/api/requests", requestsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/uploads", uploadsRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.use(
   (err: unknown, req: Request, res: Response, _next: NextFunction) => {

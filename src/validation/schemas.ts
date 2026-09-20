@@ -68,3 +68,11 @@ export const uploadSignSchema = Joi.object({
   filename: Joi.string().trim().min(1).required(),
   contentType: Joi.string().trim().required(),
 });
+
+export const ROLES = ["client", "designer", "admin"] as const;
+
+export const updateUserRoleSchema = Joi.object({
+  role: Joi.string()
+    .valid(...ROLES)
+    .required(),
+});

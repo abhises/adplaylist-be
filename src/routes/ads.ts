@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { Prisma, type Ad } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { createAdSchema } from "../validation/schemas.js";
 
@@ -65,6 +65,7 @@ router.get("/:slug", async (req, res) => {
 router.post(
   "/",
   requireAuth,
+  requireRole("designer", "admin"),
   validateBody(createAdSchema),
   async (req: AuthedRequest, res) => {
     const {

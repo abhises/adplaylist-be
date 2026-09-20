@@ -84,6 +84,7 @@ model User {
   prefPromotions   Boolean           @default(false) @map("pref_promotions")
   prefBrand        Boolean           @default(true) @map("pref_brand")
   prefNewsletter   Boolean           @default(false) @map("pref_newsletter")
+  role             String            @default("client") @db.VarChar(20)
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
   creativeRequests CreativeRequest[]
   savedAds         SavedAd[]

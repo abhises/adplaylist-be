@@ -293,11 +293,12 @@ async function seed() {
   const passwordHash = await bcrypt.hash("password123", 10);
   const user = await prisma.user.upsert({
     where: { email: "anna.smith@atlasmedia.co" },
-    update: { fullName: "Anna Smith" },
+    update: { fullName: "Anna Smith", role: "admin" },
     create: {
       email: "anna.smith@atlasmedia.co",
       passwordHash,
       fullName: "Anna Smith",
+      role: "admin",
     },
   });
 

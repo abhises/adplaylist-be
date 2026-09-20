@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
   createRequestSchema,
@@ -68,12 +68,14 @@ router.post(
 );
 
 // Marks a request as delivered and links the finished ad, so it shows up as
-// a card in the Delivered tab. No admin UI calls this yet — the app doesn't
-// have an admin role built out — but it's a real, usable capability rather
-// than a stub, ready for whenever a fulfilment flow is added.
+// a card in the Delivered tab. No admin UI calls this yet, but it's a real,
+// usable capability rather than a stub, ready for whenever a fulfilment flow
+// is added. Restricted to designer/admin since it fulfils requests raised by
+// other users, not just the caller's own.
 router.post(
   "/:id/deliver",
   requireAuth,
+  requireRole("designer", "admin"),
   validateParams(idParamSchema),
   validateBody(deliverRequestSchema),
   async (req: AuthedRequest, res) => {
@@ -83,7 +85,7 @@ router.post(
     if (!ad) return res.status(404).json({ error: "Ad not found" });
 
     const { count } = await prisma.creativeRequest.updateMany({
-      where: { id: Number(req.params.id), userId: req.userId! },
+      where: { id: Number(req.params.id) },
       data: { status: "Delivered", adId: ad.id },
     });
     if (count === 0) {
