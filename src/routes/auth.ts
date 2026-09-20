@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
+import { validateBody } from "../middleware/validate.js";
+import { loginSchema, registerSchema } from "../validation/schemas.js";
 import { toUserResponse } from "./profile.js";
 
 const router = Router();
@@ -13,24 +15,8 @@ function signToken(userId: number) {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
 }
 
-router.post("/register", async (req, res) => {
-  const { fullName, email, password } = req.body ?? {};
-  if (
-    typeof fullName !== "string" ||
-    !fullName.trim() ||
-    typeof email !== "string" ||
-    !email.trim() ||
-    typeof password !== "string"
-  ) {
-    return res
-      .status(400)
-      .json({ error: "Full name, email, and password are required" });
-  }
-  if (password.length < 8) {
-    return res
-      .status(400)
-      .json({ error: "Password must be at least 8 characters" });
-  }
+router.post("/register", validateBody(registerSchema), async (req, res) => {
+  const { fullName, email, password } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -48,11 +34,8 @@ router.post("/register", async (req, res) => {
   res.status(201).json({ token, user: toUserResponse(user) });
 });
 
-router.post("/login", async (req, res) => {
-  const { email, password } = req.body ?? {};
-  if (typeof email !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "Email and password are required" });
-  }
+router.post("/login", validateBody(loginSchema), async (req, res) => {
+  const { email, password } = req.body;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
