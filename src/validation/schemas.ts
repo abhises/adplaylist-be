@@ -1,9 +1,12 @@
 import Joi from "joi";
 
+// Only "client" and "designer" are selectable at signup — "admin" can only
+// be granted later via the admin panel, never by a self-registering user.
 export const registerSchema = Joi.object({
   fullName: Joi.string().trim().min(1).required(),
   email: Joi.string().trim().email().required(),
   password: Joi.string().min(8).required(),
+  role: Joi.string().valid("client", "designer").default("client"),
 });
 
 export const loginSchema = Joi.object({

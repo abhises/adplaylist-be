@@ -16,7 +16,7 @@ function signToken(userId: number) {
 }
 
 router.post("/register", validateBody(registerSchema), async (req, res) => {
-  const { fullName, email, password } = req.body;
+  const { fullName, email, password, role } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -25,7 +25,7 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { email, passwordHash, fullName: fullName.trim() },
+    data: { email, passwordHash, fullName: fullName.trim(), role },
   });
 
   const token = signToken(user.id);
