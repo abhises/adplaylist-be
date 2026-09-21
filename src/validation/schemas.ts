@@ -63,6 +63,10 @@ export const deliverRequestSchema = Joi.object({
   adId: Joi.string().trim().min(1).required(),
 });
 
+export const declineRequestSchema = Joi.object({
+  reason: Joi.string().trim().min(1).required(),
+});
+
 export const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
 });

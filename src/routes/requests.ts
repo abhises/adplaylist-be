@@ -4,15 +4,20 @@ import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
   createRequestSchema,
+  declineRequestSchema,
   deliverRequestSchema,
   idParamSchema,
 } from "../validation/schemas.js";
 import { toAdResponse } from "./ads.js";
-import type { Ad, CreativeRequest } from "../generated/prisma/client.js";
+import type { Ad, CreativeRequest, User } from "../generated/prisma/client.js";
 
 const router = Router();
 
-function toRequestResponse(request: CreativeRequest, ad?: Ad | null) {
+function toRequestResponse(
+  request: CreativeRequest,
+  ad?: Ad | null,
+  requester?: Pick<User, "fullName" | "email"> | null
+) {
   return {
     id: request.id,
     title: request.title,
@@ -25,6 +30,9 @@ function toRequestResponse(request: CreativeRequest, ad?: Ad | null) {
     attachmentUrl: request.attachmentUrl ?? undefined,
     attachmentName: request.attachmentName ?? undefined,
     ad: ad ? toAdResponse(ad) : undefined,
+    requester: requester
+      ? { fullName: requester.fullName, email: requester.email }
+      : undefined,
     createdAt: request.createdAt,
   };
 }
@@ -40,6 +48,25 @@ router.get("/", requireAuth, async (req: AuthedRequest, res) => {
     requests: requests.map((r) => toRequestResponse(r, r.ad)),
   });
 });
+
+// All open/delivered/declined requests across every client, for the
+// designer/admin queue — as opposed to GET "/" above, which is scoped to the
+// caller's own requests.
+router.get(
+  "/queue",
+  requireAuth,
+  requireRole("designer", "admin"),
+  async (_req: AuthedRequest, res) => {
+    const requests = await prisma.creativeRequest.findMany({
+      include: { ad: true, user: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json({
+      requests: requests.map((r) => toRequestResponse(r, r.ad, r.user)),
+    });
+  }
+);
 
 router.post(
   "/",
@@ -68,10 +95,8 @@ router.post(
 );
 
 // Marks a request as delivered and links the finished ad, so it shows up as
-// a card in the Delivered tab. No admin UI calls this yet, but it's a real,
-// usable capability rather than a stub, ready for whenever a fulfilment flow
-// is added. Restricted to designer/admin since it fulfils requests raised by
-// other users, not just the caller's own.
+// a card in the Delivered tab. Restricted to designer/admin since it fulfils
+// requests raised by other users, not just the caller's own.
 router.post(
   "/:id/deliver",
   requireAuth,
@@ -98,6 +123,34 @@ router.post(
     if (!updated)
       return res.status(500).json({ error: "Failed to update request" });
     res.json({ request: toRequestResponse(updated, ad) });
+  }
+);
+
+// Declines a request with a reason, shown to the client in their Declined
+// tab. Restricted to designer/admin for the same reason as /deliver.
+router.post(
+  "/:id/decline",
+  requireAuth,
+  requireRole("designer", "admin"),
+  validateParams(idParamSchema),
+  validateBody(declineRequestSchema),
+  async (req: AuthedRequest, res) => {
+    const { reason } = req.body;
+
+    const { count } = await prisma.creativeRequest.updateMany({
+      where: { id: Number(req.params.id) },
+      data: { status: "Declined", reason },
+    });
+    if (count === 0) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    const updated = await prisma.creativeRequest.findUnique({
+      where: { id: Number(req.params.id) },
+    });
+    if (!updated)
+      return res.status(500).json({ error: "Failed to update request" });
+    res.json({ request: toRequestResponse(updated) });
   }
 );
 
