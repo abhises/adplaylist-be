@@ -13,16 +13,6 @@ const router = Router();
 
 router.use(requireAuth, requireRole("admin"));
 
-// True if `targetId` is an admin and removing them (by role change or
-// deletion) would leave zero admins behind.
-async function wouldRemoveLastAdmin(targetId: number, targetRole: string) {
-  if (targetRole !== "admin") return false;
-  const otherAdmins = await prisma.user.count({
-    where: { role: "admin", id: { not: targetId } },
-  });
-  return otherAdmins === 0;
-}
-
 router.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({
     select: { id: true, email: true, fullName: true, role: true, createdAt: true },
@@ -73,8 +63,8 @@ router.patch(
     const target = await prisma.user.findUnique({ where: { id: targetId } });
     if (!target) return res.status(404).json({ error: "User not found" });
 
-    if (role !== "admin" && (await wouldRemoveLastAdmin(targetId, target.role))) {
-      return res.status(400).json({ error: "Can't remove the last admin." });
+    if (target.role === "admin") {
+      return res.status(400).json({ error: "Admins can't have their role changed." });
     }
 
     const updated = await prisma.user.update({
@@ -95,8 +85,8 @@ router.delete(
     const target = await prisma.user.findUnique({ where: { id: targetId } });
     if (!target) return res.status(404).json({ error: "User not found" });
 
-    if (await wouldRemoveLastAdmin(targetId, target.role)) {
-      return res.status(400).json({ error: "Can't delete the last admin." });
+    if (target.role === "admin") {
+      return res.status(400).json({ error: "Admins can't be deleted." });
     }
 
     await prisma.user.delete({ where: { id: targetId } });
