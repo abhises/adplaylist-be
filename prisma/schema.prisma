@@ -75,7 +75,8 @@ model SavedAd {
 model User {
   id               Int               @id @default(autoincrement())
   email            String            @unique(map: "email") @db.VarChar(255)
-  passwordHash     String            @map("password_hash") @db.VarChar(255)
+  passwordHash     String?           @map("password_hash") @db.VarChar(255)
+  googleId         String?           @unique(map: "google_id") @map("google_id") @db.VarChar(255)
   fullName         String            @map("full_name") @db.VarChar(255)
   defaultLanguage  String            @default("English (EN)") @map("default_language") @db.VarChar(50)
   gridDensity      String            @default("Comfortable") @map("grid_density") @db.VarChar(20)

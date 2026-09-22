@@ -14,6 +14,10 @@ export const loginSchema = Joi.object({
   password: Joi.string().required(),
 });
 
+export const googleAuthSchema = Joi.object({
+  credential: Joi.string().required(),
+});
+
 export const createAdSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   format: Joi.string().trim().allow(""),
