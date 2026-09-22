@@ -70,10 +70,6 @@ router.patch(
     const targetId = Number(req.params.id);
     const { role } = req.body;
 
-    if (targetId === req.userId) {
-      return res.status(400).json({ error: "You can't change your own role." });
-    }
-
     const target = await prisma.user.findUnique({ where: { id: targetId } });
     if (!target) return res.status(404).json({ error: "User not found" });
 
@@ -95,10 +91,6 @@ router.delete(
   validateParams(idParamSchema),
   async (req: AuthedRequest, res) => {
     const targetId = Number(req.params.id);
-
-    if (targetId === req.userId) {
-      return res.status(400).json({ error: "You can't delete your own account." });
-    }
 
     const target = await prisma.user.findUnique({ where: { id: targetId } });
     if (!target) return res.status(404).json({ error: "User not found" });
