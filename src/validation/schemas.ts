@@ -27,6 +27,7 @@ export const createAdSchema = Joi.object({
   sub: Joi.string().trim().allow(null, ""),
   cta: Joi.string().trim().allow(null, ""),
   badge: Joi.string().trim().allow(null, ""),
+  description: Joi.string().trim().allow(null, ""),
   mediaType: Joi.string().trim().valid("image", "video"),
   swatch: Joi.string().trim().allow(""),
   light: Joi.boolean(),

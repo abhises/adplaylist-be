@@ -18,6 +18,7 @@ model Ad {
   sub              String?            @db.VarChar(255)
   cta              String?            @db.VarChar(100)
   badge            String?            @db.VarChar(100)
+  description      String?            @db.Text
   mediaType        String             @map("media_type") @db.VarChar(10)
   swatch           String             @db.VarChar(255)
   light            Boolean            @default(false)
