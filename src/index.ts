@@ -14,7 +14,7 @@ import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
 import adminRoutes from "./routes/admin.js";
-import { prisma } from "./lib/prisma.js";
+import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +30,12 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 app.get("/api/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "ok", message: "Backend is running" });
+});
+
+let dbReady = false;
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  if (req.path === "/health" || dbReady) return next();
+  res.status(503).json({ error: "Server is starting up, please retry shortly" });
 });
 
 app.use("/api/auth", authRoutes);
@@ -50,10 +56,11 @@ app.use(
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await waitForDatabase();
+    dbReady = true;
     console.log("Connected to MySQL database");
   } catch (err) {
-    console.error("Failed to connect to MySQL database:", err);
+    console.error("Failed to connect to MySQL database after retries:", err);
   }
   try {
     await ensureUploadsBucket();
