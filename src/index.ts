@@ -14,6 +14,7 @@ import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
 import adminRoutes from "./routes/admin.js";
+import brandPagesRoutes from "./routes/brandPages.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
 
@@ -45,6 +46,7 @@ app.use("/api/requests", requestsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/uploads", uploadsRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/brand-pages", brandPagesRoutes);
 
 app.use(
   (err: unknown, req: Request, res: Response, _next: NextFunction) => {

@@ -25,7 +25,8 @@
     "joi": "^18.2.9",
     "jsonwebtoken": "^9.0.3",
     "mariadb": "^3.5.4",
-    "multer": "^2.4.0"
+    "multer": "^2.4.0",
+    "sanitize-html": "^2.17.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -34,6 +35,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.20.3",
+    "@types/sanitize-html": "^2.16.1",
     "prisma": "^7.10.0",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"

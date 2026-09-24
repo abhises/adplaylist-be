@@ -93,3 +93,17 @@ export const updateUserDetailsSchema = Joi.object({
   fullName: Joi.string().trim().min(1).required(),
   email: Joi.string().trim().email().required(),
 });
+
+export const brandPageSchema = Joi.object({
+  brandName: Joi.string().trim().min(1).max(150).required(),
+  slug: Joi.string()
+    .trim()
+    .lowercase()
+    .pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .max(150)
+    .allow(""),
+  heading: Joi.string().trim().max(255).allow(""),
+  bodyHtml: Joi.string().allow(""),
+  ctaLabel: Joi.string().trim().max(100).allow(""),
+  published: Joi.boolean(),
+});
