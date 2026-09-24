@@ -81,37 +81,42 @@ router.delete(
   }
 );
 
+// Maps a validated create/update body to the ad's columns. Both routes send
+// the full ad, so a field left out is cleared rather than kept.
+function toAdData(body: Record<string, unknown>) {
+  const b = body as Record<string, any>;
+  return {
+    title: b.title,
+    format: b.format || "Feed 1:1",
+    variant: b.variant ?? "overlay",
+    eyebrow: b.eyebrow || null,
+    headline: b.headline,
+    sub: b.sub || null,
+    cta: b.cta || null,
+    badge: b.badge || null,
+    description: b.description || null,
+    mediaType: b.mediaType ?? "image",
+    swatch: b.swatch || "bg-neutral-800",
+    light: !!b.light,
+    category: b.category,
+    market: b.market,
+    language: b.language || "English (EN)",
+    photoUrl: b.photo || null,
+    platforms: Array.isArray(b.platforms) ? b.platforms.join(",") : "",
+    editable: !!b.editable,
+    canvaUrl: b.canvaUrl || null,
+    dominantColor: b.dominantColor || null,
+    videoLength: b.videoLength || null,
+  };
+}
+
 router.post(
   "/",
   requireAuth,
   requireRole("designer", "admin"),
   validateBody(createAdSchema),
   async (req: AuthedRequest, res) => {
-    const {
-      title,
-      format,
-      variant,
-      eyebrow,
-      headline,
-      sub,
-      cta,
-      badge,
-      description,
-      mediaType,
-      swatch,
-      light,
-      category,
-      market,
-      language,
-      photo,
-      platforms,
-      editable,
-      canvaUrl,
-      dominantColor,
-      videoLength,
-    } = req.body;
-
-    const slug = String(title)
+    const slug = String(req.body.title)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
@@ -119,30 +124,7 @@ router.post(
     let created;
     try {
       created = await prisma.ad.create({
-        data: {
-          slug,
-          title,
-          format: format ?? "Feed 1:1",
-          variant: variant ?? "overlay",
-          eyebrow: eyebrow ?? null,
-          headline,
-          sub: sub ?? null,
-          cta: cta ?? null,
-          badge: badge ?? null,
-          description: description ?? null,
-          mediaType: mediaType ?? "image",
-          swatch: swatch ?? "bg-neutral-800",
-          light: !!light,
-          category,
-          market,
-          language: language ?? "English (EN)",
-          photoUrl: photo ?? null,
-          platforms: Array.isArray(platforms) ? platforms.join(",") : "",
-          editable: !!editable,
-          canvaUrl: canvaUrl ?? null,
-          dominantColor: dominantColor ?? null,
-          videoLength: videoLength ?? null,
-        },
+        data: { slug, ...toAdData(req.body) },
       });
     } catch (err) {
       if (
@@ -157,6 +139,27 @@ router.post(
     }
 
     res.status(201).json({ ad: toAdResponse(created) });
+  }
+);
+
+// Admins can edit any published ad. The slug is kept even if the title
+// changes, so existing links and saved bookmarks keep working.
+router.put(
+  "/:slug",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(createAdSchema),
+  async (req: AuthedRequest, res) => {
+    const ad = await prisma.ad.findUnique({
+      where: { slug: String(req.params.slug) },
+    });
+    if (!ad) return res.status(404).json({ error: "Ad not found" });
+
+    const updated = await prisma.ad.update({
+      where: { id: ad.id },
+      data: toAdData(req.body),
+    });
+    res.json({ ad: toAdResponse(updated) });
   }
 );
 
