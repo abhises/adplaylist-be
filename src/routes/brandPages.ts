@@ -26,6 +26,8 @@ function cleanHtml(html: string) {
     ]),
     allowedAttributes: {
       "*": ["class", "style", "id", "align"],
+      // Placeholder for an embedded library ad; see adplaylist-fe/src/lib/adEmbed.ts
+      div: ["data-ad"],
       a: ["href", "target", "rel", "title"],
       img: ["src", "alt", "width", "height", "loading", "title"],
       video: ["src", "poster", "controls", "autoplay", "muted", "loop", "playsinline", "width", "height"],
