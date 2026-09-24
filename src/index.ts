@@ -29,6 +29,15 @@ app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// Cloudways puts Varnish in front of the API and caches GET responses, so
+// unauthenticated reads (e.g. the frontend server rendering /brands/:slug)
+// kept getting a stale copy after an admin edited the data. API responses
+// are always live data, so tell every cache not to store them.
+app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 app.get("/api/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "ok", message: "Backend is running" });
 });
