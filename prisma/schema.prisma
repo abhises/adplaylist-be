@@ -78,22 +78,26 @@ model SavedAd {
 }
 
 model User {
-  id               Int               @id @default(autoincrement())
-  email            String            @unique(map: "email") @db.VarChar(255)
-  passwordHash     String?           @map("password_hash") @db.VarChar(255)
-  googleId         String?           @unique(map: "google_id") @map("google_id") @db.VarChar(255)
-  fullName         String            @map("full_name") @db.VarChar(255)
-  defaultLanguage  String            @default("English (EN)") @map("default_language") @db.VarChar(50)
-  gridDensity      String            @default("Comfortable") @map("grid_density") @db.VarChar(20)
-  prefOnboarding   Boolean           @default(true) @map("pref_onboarding")
-  prefProduct      Boolean           @default(true) @map("pref_product")
-  prefPromotions   Boolean           @default(false) @map("pref_promotions")
-  prefBrand        Boolean           @default(true) @map("pref_brand")
-  prefNewsletter   Boolean           @default(false) @map("pref_newsletter")
-  role             String            @default("client") @db.VarChar(20)
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
-  creativeRequests CreativeRequest[]
-  savedAds         SavedAd[]
+  id                  Int               @id @default(autoincrement())
+  email               String            @unique(map: "email") @db.VarChar(255)
+  passwordHash        String?           @map("password_hash") @db.VarChar(255)
+  googleId            String?           @unique(map: "google_id") @map("google_id") @db.VarChar(255)
+  fullName            String            @map("full_name") @db.VarChar(255)
+  defaultLanguage     String            @default("English (EN)") @map("default_language") @db.VarChar(50)
+  gridDensity         String            @default("Comfortable") @map("grid_density") @db.VarChar(20)
+  prefOnboarding      Boolean           @default(true) @map("pref_onboarding")
+  prefProduct         Boolean           @default(true) @map("pref_product")
+  prefPromotions      Boolean           @default(false) @map("pref_promotions")
+  prefBrand           Boolean           @default(true) @map("pref_brand")
+  prefNewsletter      Boolean           @default(false) @map("pref_newsletter")
+  role                String            @default("client") @db.VarChar(20)
+  // Extra access on top of the role, granted by an admin: managing the blog
+  // and/or brand pages. Admins can always do both.
+  canManageBlog       Boolean           @default(false) @map("can_manage_blog")
+  canManageBrandPages Boolean           @default(false) @map("can_manage_brand_pages")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  creativeRequests    CreativeRequest[]
+  savedAds            SavedAd[]
 
   @@map("users")
 }

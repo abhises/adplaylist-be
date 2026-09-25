@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Prisma, type BrandPage } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { cleanHtml } from "../lib/sanitize.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import { brandPageSchema, idParamSchema } from "../validation/schemas.js";
 
@@ -58,7 +58,7 @@ router.get("/public/:slug", async (req, res) => {
   res.json({ page: toBrandPageResponse(page) });
 });
 
-router.use(requireAuth, requireRole("admin"));
+router.use(requireAuth, requirePermission("brandPages"));
 
 router.get("/", async (_req, res) => {
   const pages = await prisma.brandPage.findMany({

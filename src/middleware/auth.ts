@@ -49,3 +49,29 @@ export function requireRole(...roles: string[]) {
     next();
   };
 }
+
+export type Permission = "blog" | "brandPages";
+
+// Admins, or editors an admin has granted this permission to. Like
+// requireRole, it's checked against the database on every request.
+export function requirePermission(permission: Permission) {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
+    if (!req.userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { role: true, canManageBlog: true, canManageBrandPages: true },
+    });
+    const allowed =
+      !!user &&
+      (user.role === "admin" ||
+        (user.role === "editor" &&
+          (permission === "blog" ? user.canManageBlog : user.canManageBrandPages)));
+    if (!allowed) {
+      return res.status(403).json({ error: "You don't have access to this." });
+    }
+    req.userRole = user.role;
+    next();
+  };
+}

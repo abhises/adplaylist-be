@@ -13,6 +13,11 @@ export function toUserResponse(user: User) {
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    permissions: {
+      blog: user.role === "admin" || (user.role === "editor" && user.canManageBlog),
+      brandPages:
+        user.role === "admin" || (user.role === "editor" && user.canManageBrandPages),
+    },
     defaultLanguage: user.defaultLanguage,
     gridDensity: user.gridDensity,
     memberSince: user.createdAt,

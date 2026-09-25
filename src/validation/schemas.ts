@@ -97,7 +97,9 @@ export const uploadSignSchema = Joi.object({
   contentType: Joi.string().trim().required(),
 });
 
-export const ROLES = ["client", "designer", "admin"] as const;
+// "editor" is staff an admin creates to manage the blog and/or brand pages
+// (see canManageBlog / canManageBrandPages on User).
+export const ROLES = ["client", "designer", "editor", "admin"] as const;
 
 export const updateUserRoleSchema = Joi.object({
   role: Joi.string()
@@ -108,6 +110,19 @@ export const updateUserRoleSchema = Joi.object({
 export const updateUserDetailsSchema = Joi.object({
   fullName: Joi.string().trim().min(1).required(),
   email: Joi.string().trim().email().required(),
+  canManageBlog: Joi.boolean(),
+  canManageBrandPages: Joi.boolean(),
+});
+
+export const createUserSchema = Joi.object({
+  fullName: Joi.string().trim().min(1).required(),
+  email: Joi.string().trim().email().required(),
+  password: Joi.string().min(8).required(),
+  role: Joi.string()
+    .valid(...ROLES)
+    .default("client"),
+  canManageBlog: Joi.boolean().default(false),
+  canManageBrandPages: Joi.boolean().default(false),
 });
 
 export const brandPageSchema = Joi.object({

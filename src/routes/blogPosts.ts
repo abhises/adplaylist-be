@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Prisma, type BlogPost } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { cleanHtml } from "../lib/sanitize.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import { blogPostSchema, idParamSchema } from "../validation/schemas.js";
 
@@ -71,7 +71,7 @@ router.get("/public/:slug", async (req, res) => {
   res.json({ post: toBlogPostResponse(post) });
 });
 
-router.use(requireAuth, requireRole("admin"));
+router.use(requireAuth, requirePermission("blog"));
 
 router.get("/", async (_req, res) => {
   const posts = await prisma.blogPost.findMany({
