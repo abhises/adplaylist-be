@@ -123,3 +123,20 @@ model Tag {
 
   @@map("tags")
 }
+
+model BlogPost {
+  id            Int       @id @default(autoincrement())
+  slug          String    @unique(map: "blog_posts_slug") @db.VarChar(150)
+  title         String    @db.VarChar(255)
+  excerpt       String?   @db.VarChar(500)
+  coverImageUrl String?   @map("cover_image_url") @db.VarChar(500)
+  bodyHtml      String    @map("body_html") @db.LongText
+  published     Boolean   @default(false)
+  // Set the first time the post is published, and kept if it's unpublished
+  // and republished, so the date shown on the blog doesn't jump around.
+  publishedAt   DateTime? @map("published_at") @db.Timestamp(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  @@map("blog_posts")
+}

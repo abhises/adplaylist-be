@@ -123,3 +123,17 @@ export const brandPageSchema = Joi.object({
   ctaLabel: Joi.string().trim().max(100).allow(""),
   published: Joi.boolean(),
 });
+
+export const blogPostSchema = Joi.object({
+  title: Joi.string().trim().min(1).max(255).required(),
+  slug: Joi.string()
+    .trim()
+    .lowercase()
+    .pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .max(150)
+    .allow(""),
+  excerpt: Joi.string().trim().max(500).allow(""),
+  coverImageUrl: Joi.string().uri().max(500).allow(""),
+  bodyHtml: Joi.string().allow(""),
+  published: Joi.boolean(),
+});

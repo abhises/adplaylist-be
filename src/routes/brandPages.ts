@@ -1,52 +1,12 @@
 import { Router } from "express";
-import sanitizeHtml from "sanitize-html";
 import { Prisma, type BrandPage } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
+import { cleanHtml } from "../lib/sanitize.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import { brandPageSchema, idParamSchema } from "../validation/schemas.js";
 
 const router = Router();
-
-// Only admins write these pages, but the HTML is still sanitized before it's
-// stored so a pasted template can't smuggle scripts or event handlers onto a
-// public page. Layout markup, images, links and inline styles are kept.
-function cleanHtml(html: string) {
-  return sanitizeHtml(html, {
-    allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-      "img",
-      "h1",
-      "h2",
-      "figure",
-      "figcaption",
-      "section",
-      "span",
-      "video",
-      "source",
-    ]),
-    allowedAttributes: {
-      "*": ["class", "style", "id", "align"],
-      // Placeholder for an embedded library ad; see adplaylist-fe/src/lib/adEmbed.ts
-      div: ["data-ad"],
-      a: ["href", "target", "rel", "title"],
-      img: ["src", "alt", "width", "height", "loading", "title"],
-      video: ["src", "poster", "controls", "autoplay", "muted", "loop", "playsinline", "width", "height"],
-      source: ["src", "type"],
-      td: ["colspan", "rowspan"],
-      th: ["colspan", "rowspan"],
-    },
-    allowedSchemes: ["http", "https", "mailto", "tel"],
-    transformTags: {
-      a: (tagName, attribs) => ({
-        tagName,
-        attribs:
-          attribs.target === "_blank"
-            ? { ...attribs, rel: "noopener noreferrer" }
-            : attribs,
-      }),
-    },
-  });
-}
 
 function slugify(name: string) {
   return name
