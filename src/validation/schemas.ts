@@ -38,6 +38,10 @@ export const createAdSchema = Joi.object({
   platforms: Joi.array().items(Joi.string()),
   editable: Joi.boolean(),
   canvaUrl: Joi.string().uri().allow(null, ""),
+  primaryText: Joi.string().trim().allow(null, ""),
+  brandName: Joi.string().trim().max(255).allow(null, ""),
+  creativeDescription: Joi.string().trim().allow(null, ""),
+  tags: Joi.array().items(Joi.string().trim().max(100)),
   dominantColor: Joi.string().trim().allow(null, ""),
   videoLength: Joi.string().trim().allow(null, ""),
 });

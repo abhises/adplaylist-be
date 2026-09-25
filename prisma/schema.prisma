@@ -8,32 +8,36 @@ datasource db {
 }
 
 model Ad {
-  id               Int               @id @default(autoincrement())
-  slug             String            @unique(map: "slug") @db.VarChar(150)
-  title            String            @db.VarChar(255)
-  format           String            @db.VarChar(100)
-  variant          String            @db.VarChar(20)
-  eyebrow          String?           @db.VarChar(100)
-  headline         String            @db.VarChar(255)
-  sub              String?           @db.VarChar(255)
-  cta              String?           @db.VarChar(100)
-  badge            String?           @db.VarChar(100)
-  description      String?           @db.Text
-  mediaType        String            @map("media_type") @db.VarChar(10)
-  swatch           String            @db.VarChar(255)
-  light            Boolean           @default(false)
-  category         String            @db.VarChar(100)
-  market           String            @db.VarChar(10)
-  language         String            @default("English (EN)") @db.VarChar(50)
-  photoUrl         String?           @map("photo_url") @db.VarChar(500)
-  platforms        String            @db.VarChar(255)
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
-  editable         Boolean           @default(false)
-  dominantColor    String?           @map("dominant_color") @db.VarChar(30)
-  videoLength      String?           @map("video_length") @db.VarChar(20)
-  canvaUrl         String?           @map("canva_url") @db.VarChar(500)
-  creativeRequests CreativeRequest[]
-  savedAds         SavedAd[]
+  id                  Int               @id @default(autoincrement())
+  slug                String            @unique(map: "slug") @db.VarChar(150)
+  title               String            @db.VarChar(255)
+  format              String            @db.VarChar(100)
+  variant             String            @db.VarChar(20)
+  eyebrow             String?           @db.VarChar(100)
+  headline            String            @db.VarChar(255)
+  sub                 String?           @db.VarChar(255)
+  cta                 String?           @db.VarChar(100)
+  badge               String?           @db.VarChar(100)
+  description         String?           @db.Text
+  brandName           String?           @map("brand_name") @db.VarChar(255)
+  primaryText         String?           @map("primary_text") @db.Text
+  creativeDescription String?           @map("creative_description") @db.Text
+  tags                String?           @db.VarChar(500)
+  mediaType           String            @map("media_type") @db.VarChar(10)
+  swatch              String            @db.VarChar(255)
+  light               Boolean           @default(false)
+  category            String            @db.VarChar(100)
+  market              String            @db.VarChar(10)
+  language            String            @default("English (EN)") @db.VarChar(50)
+  photoUrl            String?           @map("photo_url") @db.VarChar(500)
+  platforms           String            @db.VarChar(255)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  editable            Boolean           @default(false)
+  dominantColor       String?           @map("dominant_color") @db.VarChar(30)
+  videoLength         String?           @map("video_length") @db.VarChar(20)
+  canvaUrl            String?           @map("canva_url") @db.VarChar(500)
+  creativeRequests    CreativeRequest[]
+  savedAds            SavedAd[]
 
   @@map("ads")
 }
