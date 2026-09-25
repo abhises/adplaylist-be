@@ -18,6 +18,18 @@ export const googleAuthSchema = Joi.object({
   credential: Joi.string().required(),
 });
 
+// Ads store tags comma-separated, so a tag name can't contain a comma.
+const tagName = Joi.string()
+  .trim()
+  .min(1)
+  .max(100)
+  .pattern(/^[^,]+$/)
+  .messages({ "string.pattern.base": "Tag names can't contain commas" });
+
+export const tagSchema = Joi.object({
+  name: tagName.required(),
+});
+
 export const createAdSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   format: Joi.string().trim().allow(""),
@@ -41,7 +53,7 @@ export const createAdSchema = Joi.object({
   primaryText: Joi.string().trim().allow(null, ""),
   brandName: Joi.string().trim().max(255).allow(null, ""),
   creativeDescription: Joi.string().trim().allow(null, ""),
-  tags: Joi.array().items(Joi.string().trim().max(100)),
+  tags: Joi.array().items(tagName),
   dominantColor: Joi.string().trim().allow(null, ""),
   videoLength: Joi.string().trim().allow(null, ""),
 });

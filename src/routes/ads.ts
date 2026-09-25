@@ -3,6 +3,7 @@ import { Prisma, type Ad } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
+import { joinTags, resolveTags, splitTags } from "../lib/tags.js";
 import { createAdSchema } from "../validation/schemas.js";
 
 const router = Router();
@@ -22,7 +23,7 @@ export function toAdResponse(ad: Ad) {
     primaryText: ad.primaryText ?? undefined,
     brandName: ad.brandName ?? undefined,
     creativeDescription: ad.creativeDescription ?? undefined,
-    tags: ad.tags ? ad.tags.split(",") : [],
+    tags: splitTags(ad.tags),
     mediaType: ad.mediaType,
     swatch: ad.swatch,
     light: ad.light,
@@ -102,7 +103,6 @@ function toAdData(body: Record<string, unknown>) {
     primaryText: b.primaryText || null,
     brandName: b.brandName || null,
     creativeDescription: b.creativeDescription || null,
-    tags: Array.isArray(b.tags) && b.tags.length ? b.tags.join(",") : null,
     mediaType: b.mediaType ?? "image",
     swatch: b.swatch || "bg-neutral-800",
     light: !!b.light,
@@ -132,7 +132,11 @@ router.post(
     let created;
     try {
       created = await prisma.ad.create({
-        data: { slug, ...toAdData(req.body) },
+        data: {
+          slug,
+          ...toAdData(req.body),
+          tags: joinTags(await resolveTags(req.body.tags)),
+        },
       });
     } catch (err) {
       if (
@@ -165,7 +169,10 @@ router.put(
 
     const updated = await prisma.ad.update({
       where: { id: ad.id },
-      data: toAdData(req.body),
+      data: {
+        ...toAdData(req.body),
+        tags: joinTags(await resolveTags(req.body.tags)),
+      },
     });
     res.json({ ad: toAdResponse(updated) });
   }

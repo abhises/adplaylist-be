@@ -113,3 +113,13 @@ model BrandPage {
 
   @@map("brand_pages")
 }
+
+// The list of tags designers pick from. Ads store their tags as a
+// comma-separated string (ads.tags), so tag names can't contain commas.
+model Tag {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique(map: "tag_name") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("tags")
+}
