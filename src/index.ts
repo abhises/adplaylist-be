@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, {
@@ -17,6 +18,7 @@ import adminRoutes from "./routes/admin.js";
 import brandPagesRoutes from "./routes/brandPages.js";
 import tagsRoutes from "./routes/tags.js";
 import blogPostsRoutes from "./routes/blogPosts.js";
+import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
 
@@ -61,10 +63,41 @@ app.use("/api/tags", tagsRoutes);
 app.use("/api/blog-posts", blogPostsRoutes);
 app.use("/api/brand-pages", brandPagesRoutes);
 
+// Database errors caused by what the client sent get a real status and a
+// message they can act on; anything else stays a generic 500.
+function clientFacingError(err: unknown): { status: number; error: string } | null {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return null;
+  switch (err.code) {
+    case "P2000": {
+      const column = /Column: (\w+)/.exec(err.message)?.[1];
+      return {
+        status: 400,
+        error: column ? `${column} is too long` : "A value is too long",
+      };
+    }
+    case "P2002":
+      return { status: 409, error: "That already exists" };
+    case "P2025":
+      return { status: 404, error: "Not found" };
+    default:
+      return null;
+  }
+}
+
 app.use(
   (err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    // pm2's logs carry no timestamps or request info, so start every error
+    // with one line that has both, plus an id the client also receives —
+    // quoting it finds the exact entry in the error log.
+    const errorId = randomUUID().slice(0, 8);
+    const known = clientFacingError(err);
+    console.error(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${known?.status ?? 500} (error ${errorId})`
+    );
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res
+      .status(known?.status ?? 500)
+      .json({ error: known?.error ?? "Internal server error", errorId });
   }
 );
 
