@@ -27,7 +27,7 @@ model Ad {
   swatch              String            @db.VarChar(255)
   light               Boolean           @default(false)
   category            String            @db.VarChar(100)
-  market              String            @db.VarChar(10)
+  market              String            @db.VarChar(50)
   language            String            @default("English (EN)") @db.VarChar(50)
   photoUrl            String?           @map("photo_url") @db.VarChar(500)
   platforms           String            @db.VarChar(255)
