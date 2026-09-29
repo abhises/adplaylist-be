@@ -36,6 +36,10 @@ model Ad {
   dominantColor       String?           @map("dominant_color") @db.VarChar(30)
   videoLength         String?           @map("video_length") @db.VarChar(20)
   canvaUrl            String?           @map("canva_url") @db.VarChar(500)
+  // Picked by an admin to show on the landing page: `featured` in the
+  // library section, `showInHero` in the hero's product panel.
+  featured            Boolean           @default(false)
+  showInHero          Boolean           @default(false) @map("show_in_hero")
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
 

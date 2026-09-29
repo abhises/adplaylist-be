@@ -36,12 +36,15 @@ export function toAdResponse(ad: Ad) {
     canvaUrl: ad.canvaUrl ?? undefined,
     dominantColor: ad.dominantColor ?? undefined,
     videoLength: ad.videoLength ?? undefined,
+    featured: ad.featured,
+    showInHero: ad.showInHero,
     createdAt: ad.createdAt,
   };
 }
 
 router.get("/", async (req, res) => {
-  const { category, market, language, mediaType, platform, q } = req.query;
+  const { category, market, language, mediaType, platform, q, featured } =
+    req.query;
   const where: Prisma.AdWhereInput = {};
 
   if (typeof category === "string" && category) where.category = category;
@@ -51,6 +54,7 @@ router.get("/", async (req, res) => {
   if (typeof platform === "string" && platform) {
     where.platforms = { contains: platform };
   }
+  if (featured === "true") where.featured = true;
   if (typeof q === "string" && q) {
     where.OR = [
       { title: { contains: q } },
@@ -83,6 +87,37 @@ router.delete(
 
     await prisma.ad.delete({ where: { id: ad.id } });
     res.status(204).send();
+  }
+);
+
+// Admins pick which ads the landing page shows: `featured` for the library
+// section, `showInHero` for the hero panel. Kept separate from PUT so
+// toggling them doesn't resend (and revalidate) the whole ad.
+router.patch(
+  "/:slug/home-section",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res) => {
+    const data: { featured?: boolean; showInHero?: boolean } = {};
+    for (const key of ["featured", "showInHero"] as const) {
+      const value = req.body?.[key];
+      if (value === undefined) continue;
+      if (typeof value !== "boolean") {
+        return res.status(400).json({ error: `${key} must be true or false` });
+      }
+      data[key] = value;
+    }
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
+
+    const ad = await prisma.ad.findUnique({
+      where: { slug: String(req.params.slug) },
+    });
+    if (!ad) return res.status(404).json({ error: "Ad not found" });
+
+    const updated = await prisma.ad.update({ where: { id: ad.id }, data });
+    res.json({ ad: toAdResponse(updated) });
   }
 );
 
