@@ -18,6 +18,7 @@ import adminRoutes from "./routes/admin.js";
 import brandPagesRoutes from "./routes/brandPages.js";
 import tagsRoutes from "./routes/tags.js";
 import blogPostsRoutes from "./routes/blogPosts.js";
+import feedbackRoutes from "./routes/feedback.js";
 import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
@@ -62,6 +63,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/tags", tagsRoutes);
 app.use("/api/blog-posts", blogPostsRoutes);
 app.use("/api/brand-pages", brandPagesRoutes);
+app.use("/api/feedback", feedbackRoutes);
 
 // Database errors caused by what the client sent get a real status and a
 // message they can act on; anything else stays a generic 500.

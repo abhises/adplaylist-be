@@ -102,6 +102,7 @@ model User {
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
+  feedback            Feedback[]
 
   @@map("users")
 }
@@ -147,4 +148,23 @@ model BlogPost {
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamp(0)
 
   @@map("blog_posts")
+}
+
+// Sent from the Feedback tab on the library pages, read by admins in
+// /admin/feedback.
+model Feedback {
+  id             Int      @id @default(autoincrement())
+  userId         Int?     @map("user_id")
+  message        String   @db.Text
+  // Where to reply, if the sender wants one — may differ from their login.
+  email          String?  @db.VarChar(255)
+  screenshotUrl  String?  @map("screenshot_url") @db.VarChar(500)
+  screenshotName String?  @map("screenshot_name") @db.VarChar(255)
+  pageUrl        String?  @map("page_url") @db.VarChar(500)
+  resolved       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_feedback_user")
+
+  @@index([userId], map: "fk_feedback_user")
+  @@map("feedback")
 }

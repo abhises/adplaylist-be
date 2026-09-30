@@ -152,3 +152,15 @@ export const blogPostSchema = Joi.object({
   bodyHtml: Joi.string().allow(""),
   published: Joi.boolean(),
 });
+
+export const createFeedbackSchema = Joi.object({
+  message: Joi.string().trim().min(1).max(5000).required(),
+  email: Joi.string().trim().email().max(255).allow(null, ""),
+  screenshotUrl: Joi.string().uri().max(500).allow(null, ""),
+  screenshotName: Joi.string().trim().max(255).allow(null, ""),
+  pageUrl: Joi.string().trim().max(500).allow(null, ""),
+});
+
+export const updateFeedbackSchema = Joi.object({
+  resolved: Joi.boolean().required(),
+});
