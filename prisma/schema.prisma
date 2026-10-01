@@ -248,3 +248,18 @@ model StripeEvent {
 
   @@map("stripe_events")
 }
+
+// The price of each plan + credit volume, editable by admins. Seeded with
+// the defaults in lib/plans.ts. Changing one creates new Stripe prices
+// (lib/catalog.ts); existing subscribers keep the price they signed up at.
+model PlanPrice {
+  plan         String   @db.VarChar(20)
+  volume       Int
+  monthlyCents Int      @map("monthly_cents")
+  yearlyCents  Int      @map("yearly_cents")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  updatedById  Int?     @map("updated_by_id")
+
+  @@id([plan, volume])
+  @@map("plan_prices")
+}

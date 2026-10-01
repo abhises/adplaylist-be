@@ -20,6 +20,7 @@ import tagsRoutes from "./routes/tags.js";
 import blogPostsRoutes from "./routes/blogPosts.js";
 import feedbackRoutes from "./routes/feedback.js";
 import billingRoutes, { webhookHandler as stripeWebhook } from "./routes/billing.js";
+import plansRoutes from "./routes/plans.js";
 import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
@@ -68,6 +69,7 @@ app.use("/api/blog-posts", blogPostsRoutes);
 app.use("/api/brand-pages", brandPagesRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/plans", plansRoutes);
 
 // Database errors caused by what the client sent get a real status and a
 // message they can act on; anything else stays a generic 500.

@@ -4,9 +4,14 @@ import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
+import { setPlanPrice } from "../lib/catalog.js";
+import { isValidVolume } from "../lib/plans.js";
+import { toPlansResponse } from "./plans.js";
 import {
   createUserSchema,
   idParamSchema,
+  planPriceParamsSchema,
+  planPriceSchema,
   updateUserDetailsSchema,
   updateUserRoleSchema,
 } from "../validation/schemas.js";
@@ -147,6 +152,29 @@ router.delete(
 
     await prisma.user.delete({ where: { id: targetId } });
     res.status(204).send();
+  }
+);
+
+// Changes one plan's price. New signups and plan changes pay it straight
+// away; existing subscribers keep the price they're on.
+router.put(
+  "/plan-prices/:plan/:volume",
+  validateParams(planPriceParamsSchema),
+  validateBody(planPriceSchema),
+  async (req: AuthedRequest, res) => {
+    const plan = req.params.plan as Parameters<typeof setPlanPrice>[0];
+    const volume = Number(req.params.volume);
+    if (!isValidVolume(plan, volume)) {
+      return res.status(404).json({ error: "That plan doesn't have this credit volume." });
+    }
+    const { monthly, yearly } = req.body;
+    const table = await setPlanPrice(
+      plan,
+      volume,
+      { monthly: Math.round(monthly * 100), yearly: Math.round(yearly * 100) },
+      req.userId!
+    );
+    res.json({ plans: toPlansResponse(table) });
   }
 );
 

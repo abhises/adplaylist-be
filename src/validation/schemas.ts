@@ -179,3 +179,17 @@ export const checkoutSchema = Joi.object({
 export const checkoutReturnSchema = Joi.object({
   sessionId: Joi.string().trim().pattern(/^cs_/).required(),
 });
+
+// Dollars with up to 2 decimal places. Starter can't be free: a $0 Stripe
+// subscription would never collect a card.
+const priceDollars = Joi.number().precision(2).min(0.5).max(100000);
+
+export const planPriceParamsSchema = Joi.object({
+  plan: Joi.string().valid(...PLAN_IDS).required(),
+  volume: Joi.number().integer().min(0).required(),
+});
+
+export const planPriceSchema = Joi.object({
+  monthly: priceDollars.required(),
+  yearly: priceDollars.required(),
+});

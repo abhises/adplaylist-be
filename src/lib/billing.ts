@@ -32,6 +32,11 @@ export function getStripe(): Stripe {
 const PRICE_CACHE_MS = 5 * 60 * 1000;
 const priceIds = new Map<string, { id: string; at: number }>();
 
+// Called after prices change in Stripe, so checkout uses the new ones now.
+export function clearPriceCache() {
+  priceIds.clear();
+}
+
 // Prices are found by lookup key (set by scripts/stripeSetup.ts) rather than
 // hard-coded ids, so test and live accounts need no code or env changes.
 export async function priceIdFor(plan: PlanId, volume: number, cycle: BillingCycle) {
