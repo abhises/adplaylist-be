@@ -1,7 +1,14 @@
 import { Router } from "express";
 import { Prisma, type Ad } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
+import {
+  entitlementsOfRequest,
+  loadAccount,
+  optionalAuth,
+  requireAuth,
+  requireRole,
+  type AuthedRequest,
+} from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { joinTags, resolveTags, splitTags } from "../lib/tags.js";
 import { createAdSchema } from "../validation/schemas.js";
@@ -34,6 +41,7 @@ export function toAdResponse(ad: Ad) {
     platforms: ad.platforms ? ad.platforms.split(",") : [],
     editable: ad.editable,
     canvaUrl: ad.canvaUrl ?? undefined,
+    hasEditableCopy: !!ad.canvaUrl,
     dominantColor: ad.dominantColor ?? undefined,
     videoLength: ad.videoLength ?? undefined,
     featured: ad.featured,
@@ -42,7 +50,18 @@ export function toAdResponse(ad: Ad) {
   };
 }
 
-router.get("/", async (req, res) => {
+// The Canva link is the editable copy, so it's only sent to viewers whose
+// plan includes editable copies; others still learn one exists
+// (hasEditableCopy) so the page can show a locked button.
+export function adForViewer(req: AuthedRequest) {
+  const canEdit = !!entitlementsOfRequest(req)?.editableCopies;
+  return (ad: Ad) => {
+    const res = toAdResponse(ad);
+    return canEdit ? res : { ...res, canvaUrl: undefined };
+  };
+}
+
+router.get("/", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
   const { category, market, language, mediaType, platform, q, featured } =
     req.query;
   const where: Prisma.AdWhereInput = {};
@@ -63,13 +82,13 @@ router.get("/", async (req, res) => {
   }
 
   const ads = await prisma.ad.findMany({ where, orderBy: { id: "asc" } });
-  res.json({ ads: ads.map(toAdResponse) });
+  res.json({ ads: ads.map(adForViewer(req)) });
 });
 
-router.get("/:slug", async (req, res) => {
-  const ad = await prisma.ad.findUnique({ where: { slug: req.params.slug } });
+router.get("/:slug", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
+  const ad = await prisma.ad.findUnique({ where: { slug: String(req.params.slug) } });
   if (!ad) return res.status(404).json({ error: "Ad not found" });
-  res.json({ ad: toAdResponse(ad) });
+  res.json({ ad: adForViewer(req)(ad) });
 });
 
 // Deleting is admin-only (stricter than publishing, which designers can also

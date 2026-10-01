@@ -6,7 +6,26 @@ import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { googleAuthSchema, loginSchema, registerSchema } from "../validation/schemas.js";
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
-import { toUserResponse } from "./profile.js";
+import { TRIAL_DAYS } from "../lib/plans.js";
+import { userResponseFor } from "./profile.js";
+
+// Every new customer owns a fresh account that starts a 7-day Starter trial;
+// choosing a paid plan (with a card) happens on the billing page. Staff
+// roles don't get an account — they never use a seat.
+function newOwnerAccount(role: string, fullName: string) {
+  if (role !== "client") return {};
+  return {
+    accountRole: "owner",
+    account: {
+      create: {
+        name: fullName,
+        plan: "starter",
+        status: "trial",
+        trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+      },
+    },
+  };
+}
 
 const router = Router();
 
@@ -26,13 +45,19 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { email, passwordHash, fullName: fullName.trim(), role },
+    data: {
+      email,
+      passwordHash,
+      fullName: fullName.trim(),
+      role,
+      ...newOwnerAccount(role, fullName.trim()),
+    },
   });
 
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
-  res.status(201).json({ token, user: toUserResponse(user) });
+  res.status(201).json({ token, user: await userResponseFor(user.id) });
 });
 
 router.post("/login", validateBody(loginSchema), async (req, res) => {
@@ -57,7 +82,7 @@ router.post("/login", validateBody(loginSchema), async (req, res) => {
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
-  res.json({ token, user: toUserResponse(user) });
+  res.json({ token, user: await userResponseFor(user.id) });
 });
 
 router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
@@ -90,6 +115,7 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
             fullName: googleUser.fullName,
             googleId: googleUser.googleId,
             role: "client",
+            ...newOwnerAccount("client", googleUser.fullName),
           },
         });
   }
@@ -97,13 +123,13 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
-  res.json({ token, user: toUserResponse(user) });
+  res.json({ token, user: await userResponseFor(user.id) });
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+  const user = await userResponseFor(req.userId!);
   if (!user) return res.status(404).json({ error: "User not found" });
-  res.json({ user: toUserResponse(user) });
+  res.json({ user });
 });
 
 export default router;

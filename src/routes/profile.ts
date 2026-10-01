@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { Prisma, type User } from "../generated/prisma/client.js";
+import { Prisma, type Account, type User } from "../generated/prisma/client.js";
+import { loadAccountForUser, toAccountResponse } from "../lib/billing.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
@@ -7,7 +8,7 @@ import { updateProfileSchema } from "../validation/schemas.js";
 
 const router = Router();
 
-export function toUserResponse(user: User) {
+export function toUserResponse(user: User, account: Account | null = null) {
   return {
     id: user.id,
     email: user.email,
@@ -28,13 +29,20 @@ export function toUserResponse(user: User) {
       brand: user.prefBrand,
       newsletter: user.prefNewsletter,
     },
+    account: account ? toAccountResponse(account, user.accountRole) : null,
   };
 }
 
+// The user plus their account (with any due status changes applied).
+export async function userResponseFor(userId: number) {
+  const loaded = await loadAccountForUser(userId);
+  return loaded ? toUserResponse(loaded.user, loaded.account) : null;
+}
+
 router.get("/", requireAuth, async (req: AuthedRequest, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+  const user = await userResponseFor(req.userId!);
   if (!user) return res.status(404).json({ error: "User not found" });
-  res.json({ user: toUserResponse(user) });
+  res.json({ user });
 });
 
 router.put(
@@ -59,7 +67,7 @@ router.put(
           prefNewsletter: emailPreferences?.newsletter ?? undefined,
         },
       });
-      res.json({ user: toUserResponse(user) });
+      res.json({ user: await userResponseFor(user.id) });
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&

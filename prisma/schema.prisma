@@ -60,11 +60,17 @@ model CreativeRequest {
   adId           Int?      @map("ad_id")
   attachmentUrl  String?   @map("attachment_url") @db.VarChar(500)
   attachmentName String?   @map("attachment_name") @db.VarChar(255)
+  // The account whose credit paid for this request (null for staff, or for
+  // requests made before credits existed). Declining refunds it.
+  accountId      Int?      @map("account_id")
+  creditCharged  Boolean   @default(false) @map("credit_charged")
+  account        Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
   ad             Ad?       @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
 
   @@index([adId], map: "fk_requests_ad")
   @@index([userId], map: "fk_requests_user")
+  @@index([accountId], map: "fk_requests_account")
   @@map("creative_requests")
 }
 
@@ -100,10 +106,16 @@ model User {
   canManageBlog       Boolean           @default(false) @map("can_manage_blog")
   canManageBrandPages Boolean           @default(false) @map("can_manage_brand_pages")
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  // The customer account (company) this person belongs to, and whether they
+  // own it or were invited. Null for Adplaylist staff, who never use a seat.
+  accountId           Int?              @map("account_id")
+  accountRole         String?           @map("account_role") @db.VarChar(10)
+  account             Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_account")
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
   feedback            Feedback[]
 
+  @@index([accountId], map: "fk_users_account")
   @@map("users")
 }
 
@@ -167,4 +179,72 @@ model Feedback {
 
   @@index([userId], map: "fk_feedback_user")
   @@map("feedback")
+}
+
+// A paying customer (company). Plan, status and credits live here rather than
+// on the user, so every seat shares them. Stripe is the source of truth for
+// the subscription; webhooks (routes/billing.ts) copy its state into these
+// columns. See "Adplaylist – User Types & Plan Rules" for the rules.
+model Account {
+  id                   Int                 @id @default(autoincrement())
+  name                 String              @db.VarChar(255)
+  // starter | pro | agency
+  plan                 String              @default("starter") @db.VarChar(20)
+  // Credits per month the plan includes: 0 for Starter, 10–40 Pro, 50–150 Agency.
+  creditVolume         Int                 @default(0) @map("credit_volume")
+  // monthly | yearly
+  billingCycle         String              @default("monthly") @map("billing_cycle") @db.VarChar(10)
+  // trial | active | past_due | cancelled | expired
+  status               String              @default("trial") @db.VarChar(20)
+  trialEndsAt          DateTime?           @map("trial_ends_at") @db.DateTime(0)
+  // When the paid period ends; for a cancelled account, when it expires.
+  currentPeriodEnd     DateTime?           @map("current_period_end") @db.DateTime(0)
+  pastDueSince         DateTime?           @map("past_due_since") @db.DateTime(0)
+  credits              Int                 @default(0)
+  // Yearly plans refill monthly; this is when the next refill is due.
+  nextRefillAt         DateTime?           @map("next_refill_at") @db.DateTime(0)
+  // The paid invoice that last refilled credits, so handling it twice (a
+  // redelivered webhook, or the checkout return page) can't refill again.
+  lastRefillInvoiceId  String?             @map("last_refill_invoice_id") @db.VarChar(255)
+  stripeCustomerId     String?             @unique(map: "accounts_stripe_customer") @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String?             @unique(map: "accounts_stripe_subscription") @map("stripe_subscription_id") @db.VarChar(255)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamp(0)
+  users                User[]
+  creativeRequests     CreativeRequest[]
+  creditTransactions   CreditTransaction[]
+
+  @@map("accounts")
+}
+
+// Every change to an account's credits, so customers can see where their
+// credits came from and went, and lifetime totals add up. `balance` is the
+// account's credits right after this entry.
+model CreditTransaction {
+  id              Int      @id @default(autoincrement())
+  accountId       Int      @map("account_id")
+  // trial | refill | upgrade | spent | refunded | expired | adjustment
+  reason          String   @db.VarChar(20)
+  delta           Int
+  balance         Int
+  note            String?  @db.VarChar(255)
+  requestId       Int?     @map("request_id")
+  // The Stripe invoice that paid for a grant (trial start, refill, upgrade),
+  // so each payment can show the credits it bought.
+  stripeInvoiceId String?  @map("stripe_invoice_id") @db.VarChar(255)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_credit_tx_account")
+
+  @@index([accountId, createdAt], map: "credit_tx_account_created")
+  @@index([stripeInvoiceId], map: "credit_tx_invoice")
+  @@map("credit_transactions")
+}
+
+// Stripe webhook event ids already handled, so a redelivered event can't
+// refill credits twice.
+model StripeEvent {
+  id        String   @id @db.VarChar(255)
+  type      String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("stripe_events")
 }

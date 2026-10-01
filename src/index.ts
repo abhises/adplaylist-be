@@ -19,6 +19,7 @@ import brandPagesRoutes from "./routes/brandPages.js";
 import tagsRoutes from "./routes/tags.js";
 import blogPostsRoutes from "./routes/blogPosts.js";
 import feedbackRoutes from "./routes/feedback.js";
+import billingRoutes, { webhookHandler as stripeWebhook } from "./routes/billing.js";
 import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureUploadsBucket } from "./lib/supabase.js";
@@ -31,6 +32,8 @@ const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
   .map((origin) => origin.trim());
 app.use(cors({ origin: corsOrigins }));
+// Before express.json(): Stripe's signature check needs the raw body.
+app.post("/api/billing/webhook", ...stripeWebhook);
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
@@ -64,6 +67,7 @@ app.use("/api/tags", tagsRoutes);
 app.use("/api/blog-posts", blogPostsRoutes);
 app.use("/api/brand-pages", brandPagesRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/billing", billingRoutes);
 
 // Database errors caused by what the client sent get a real status and a
 // message they can act on; anything else stays a generic 500.

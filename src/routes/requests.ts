@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
+import {
+  loadAccount,
+  requireAuth,
+  requireEntitlement,
+  requireRole,
+  type AuthedRequest,
+} from "../middleware/auth.js";
+import { refundCredit, refundRequestCredit, spendCredit } from "../lib/billing.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
   createRequestSchema,
@@ -68,27 +75,58 @@ router.get(
   }
 );
 
+// A customer's request spends one of their account's shared credits; staff
+// requests are free. If saving fails the credit goes straight back.
 router.post(
   "/",
   requireAuth,
+  loadAccount,
+  requireEntitlement("requests"),
   validateBody(createRequestSchema),
   async (req: AuthedRequest, res) => {
     const { title, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
       req.body;
 
-    const created = await prisma.creativeRequest.create({
-      data: {
-        userId: req.userId!,
-        title,
-        type: "New creative",
-        sizeNeeded: sizeNeeded ?? null,
-        neededBy: neededBy ? new Date(neededBy) : null,
-        notes: notes ?? null,
-        status: "Open",
-        attachmentUrl: attachmentUrl ?? null,
-        attachmentName: attachmentName ?? null,
-      },
-    });
+    const account = req.userRole === "client" ? req.account ?? null : null;
+    if (req.userRole === "client" && !account) {
+      return res.status(402).json({ error: "Choose a plan to request ads.", upgrade: true });
+    }
+    const spentEntryId = account ? await spendCredit(account.id, `Request: ${title}`) : null;
+    if (account && !spentEntryId) {
+      return res.status(402).json({
+        error: "You're out of credits.",
+        upgrade: true,
+        outOfCredits: true,
+      });
+    }
+
+    let created;
+    try {
+      created = await prisma.creativeRequest.create({
+        data: {
+          userId: req.userId!,
+          accountId: account?.id ?? null,
+          creditCharged: !!account,
+          title,
+          type: "New creative",
+          sizeNeeded: sizeNeeded ?? null,
+          neededBy: neededBy ? new Date(neededBy) : null,
+          notes: notes ?? null,
+          status: "Open",
+          attachmentUrl: attachmentUrl ?? null,
+          attachmentName: attachmentName ?? null,
+        },
+      });
+    } catch (err) {
+      if (account) await refundCredit(account.id, `Request failed to save: ${title}`);
+      throw err;
+    }
+    if (spentEntryId) {
+      await prisma.creditTransaction.update({
+        where: { id: spentEntryId },
+        data: { requestId: created.id },
+      });
+    }
 
     res.status(201).json({ request: toRequestResponse(created) });
   }
@@ -144,6 +182,10 @@ router.post(
     if (count === 0) {
       return res.status(404).json({ error: "Request not found" });
     }
+
+    // A declined request gives its credit back (once, however many times
+    // it's declined).
+    await refundRequestCredit(Number(req.params.id));
 
     const updated = await prisma.creativeRequest.findUnique({
       where: { id: Number(req.params.id) },

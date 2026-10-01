@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { PLAN_IDS, isValidVolume } from "../lib/plans.js";
 
 // Only "client" and "designer" are selectable at signup — "admin" can only
 // be granted later via the admin panel, never by a self-registering user.
@@ -163,4 +164,18 @@ export const createFeedbackSchema = Joi.object({
 
 export const updateFeedbackSchema = Joi.object({
   resolved: Joi.boolean().required(),
+});
+
+export const checkoutSchema = Joi.object({
+  plan: Joi.string().valid(...PLAN_IDS).required(),
+  volume: Joi.number().integer().min(0).required(),
+  cycle: Joi.string().valid("monthly", "yearly").required(),
+}).custom((value, helpers) =>
+  isValidVolume(value.plan, value.volume)
+    ? value
+    : helpers.message({ custom: "That credit volume isn't offered on this plan" })
+);
+
+export const checkoutReturnSchema = Joi.object({
+  sessionId: Joi.string().trim().pattern(/^cs_/).required(),
 });
