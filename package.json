@@ -11,7 +11,9 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx src/db/seed.ts",
     "stripe:setup": "tsx src/scripts/stripeSetup.ts",
-    "ads:watermark": "tsx src/scripts/watermarkAds.ts"
+    "ads:watermark": "tsx src/scripts/watermarkAds.ts",
+    "storage:backup": "tsx src/scripts/backupStorage.ts",
+    "storage:restore": "tsx src/scripts/restoreStorage.ts"
   },
   "author": "",
   "license": "ISC",

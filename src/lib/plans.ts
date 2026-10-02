@@ -109,6 +109,9 @@ export function productName(plan: PlanId, volume: number) {
 // account) get everything; they're checked by role elsewhere.
 export type Entitlements = {
   save: boolean;
+  // Downloading creatives without the watermark (paid plans). Anyone signed
+  // in can download; without this they get the watermarked copy.
+  cleanDownload: boolean;
   editableCopies: boolean;
   requests: boolean;
   videoRequests: boolean;
@@ -117,6 +120,7 @@ export type Entitlements = {
 
 export const ALL_ENTITLEMENTS: Entitlements = {
   save: true,
+  cleanDownload: true,
   editableCopies: true,
   requests: true,
   videoRequests: true,
@@ -127,6 +131,7 @@ export function entitlementsFor(plan: PlanId, status: AccountStatus): Entitlemen
   if (status === "expired") {
     return {
       save: false,
+      cleanDownload: false,
       editableCopies: false,
       requests: false,
       videoRequests: false,
@@ -135,6 +140,9 @@ export function entitlementsFor(plan: PlanId, status: AccountStatus): Entitlemen
   }
   return {
     save: true,
+    // Paid: active, in the past-due grace period, or cancelled but still in
+    // a paid period (see entitlementsOf for a trial cancelled before paying).
+    cleanDownload: status !== "trial",
     editableCopies: plan !== "starter",
     requests: plan !== "starter",
     videoRequests: plan === "agency",

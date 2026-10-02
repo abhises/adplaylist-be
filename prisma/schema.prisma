@@ -30,10 +30,10 @@ model Ad {
   market              String            @db.VarChar(50)
   language            String            @default("English (EN)") @db.VarChar(50)
   photoUrl            String?           @map("photo_url") @db.VarChar(500)
-  // The creative as uploaded, without the ADPLAYLIST watermark. photoUrl is
-  // the watermarked copy everyone sees; this one is only sent to signed-in
-  // users, for Download. Null for ads not watermarked yet.
-  originalPhotoUrl    String?           @map("original_photo_url") @db.VarChar(500)
+  // A copy of photoUrl with the ADPLAYLIST watermark baked in: what unpaid
+  // users get from Download (pages and paid downloads use the clean
+  // photoUrl). Made on first need; null until then or after a new upload.
+  watermarkedPhotoUrl String?           @map("watermarked_photo_url") @db.VarChar(500)
   platforms           String            @db.VarChar(255)
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
   editable            Boolean           @default(false)

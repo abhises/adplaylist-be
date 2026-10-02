@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
+import { prisma } from "./prisma.js";
 import { supabase, UPLOADS_BUCKET } from "./supabase.js";
 
-// Ad creatives are published with a faint repeating "ADPLAYLIST" mark baked
-// into the file, so saving the image from a page (right-click, drag, open in
-// new tab) keeps it. The clean upload is kept as the ad's original, for
-// signed-in users' downloads.
+// Unpaid users' downloads get a copy of the creative with a faint repeating
+// "ADPLAYLIST" mark baked into the file. Pages, staff and paid plans get the
+// clean upload.
 
 // The pattern of the "Public ad page" prototype (tiles about a third of the
 // image wide, rotated -30°), in white with a faint dark outline so it shows
@@ -69,14 +69,11 @@ const slug = (name: string) =>
     .replace(/(^-|-$)/g, "")
     .slice(0, 120);
 
-// Downloads `originalUrl`, watermarks it and uploads the result under the
-// keyword file name (e.g. dog-food-testimonial-ad-1200x1200.png) in a folder
-// of its own, so two ads can share a name. Returns the new public URL.
-export async function publishWatermarked(originalUrl: string, fileName: string) {
-  const res = await fetch(originalUrl);
-  if (!res.ok) throw new Error(`Couldn't fetch the creative (${res.status})`);
-  const { buffer, ext, type } = await watermarkImage(Buffer.from(await res.arrayBuffer()));
-
+// Watermarks `input` and uploads the result under the keyword file name
+// (e.g. dog-food-testimonial-ad-1200x1200.png) in a folder of its own, so two
+// ads can share a name. Returns the new public URL.
+export async function publishWatermarked(input: Buffer, fileName: string) {
+  const { buffer, ext, type } = await watermarkImage(input);
   const base = slug(path.basename(fileName, path.extname(fileName))) || "ad-creative";
   const key = `ads/${crypto.randomBytes(4).toString("hex")}/${base}${ext}`;
   const { error } = await supabase.storage
@@ -86,41 +83,27 @@ export async function publishWatermarked(originalUrl: string, fileName: string) 
   return supabase.storage.from(UPLOADS_BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
-// Works out an ad's published (watermarked) and original image when it's
-// saved:
-// - unchanged image and name: kept as they are;
-// - same image, new SEO file name: re-published from the original;
-// - a new upload (or an ad from before watermarking): the upload becomes the
-//   original and a watermarked copy is published.
-// If watermarking fails the clean image is used as before, so saving an ad
-// never fails over it; the failure is logged.
-export async function prepareCreative({
-  photoUrl,
-  fileName,
-  existing,
-}: {
+// The ad's watermarked copy, made and saved on first need. Null when the ad
+// has no image.
+export async function watermarkedCopyOf(ad: {
+  id: number;
+  slug: string;
   photoUrl: string | null;
-  fileName: string;
-  existing?: { photoUrl: string | null; originalPhotoUrl: string | null } | null;
-}): Promise<{ photoUrl: string | null; originalPhotoUrl: string | null }> {
-  if (!photoUrl) return { photoUrl: null, originalPhotoUrl: null };
-
-  const keepsImage = !!existing && photoUrl === existing.photoUrl;
-  const original =
-    keepsImage && existing.originalPhotoUrl ? existing.originalPhotoUrl : photoUrl;
-
-  if (keepsImage && existing.originalPhotoUrl) {
-    const wantedBase = slug(path.basename(fileName, path.extname(fileName)));
-    const currentBase = path.basename(photoUrl, path.extname(photoUrl));
-    if (!wantedBase || wantedBase === currentBase) {
-      return { photoUrl, originalPhotoUrl: existing.originalPhotoUrl };
-    }
-  }
-
-  try {
-    return { photoUrl: await publishWatermarked(original, fileName), originalPhotoUrl: original };
-  } catch (err) {
-    console.error("Watermarking the creative failed; publishing it without:", err);
-    return { photoUrl: original, originalPhotoUrl: null };
-  }
+  watermarkedPhotoUrl: string | null;
+  imageFileName: string | null;
+}) {
+  if (ad.watermarkedPhotoUrl) return ad.watermarkedPhotoUrl;
+  if (!ad.photoUrl) return null;
+  const res = await fetch(ad.photoUrl);
+  if (!res.ok) throw new Error(`Couldn't fetch the creative (${res.status})`);
+  const url = await publishWatermarked(
+    Buffer.from(await res.arrayBuffer()),
+    ad.imageFileName || ad.slug
+  );
+  // Only if the image hasn't changed meanwhile (an admin re-uploading it).
+  await prisma.ad.updateMany({
+    where: { id: ad.id, photoUrl: ad.photoUrl },
+    data: { watermarkedPhotoUrl: url },
+  });
+  return url;
 }

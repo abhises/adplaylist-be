@@ -1,3 +1,4 @@
+import path from "node:path";
 import { Router } from "express";
 import { Prisma, type Ad, type Author } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
@@ -12,7 +13,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { joinTags, resolveTags, splitTags } from "../lib/tags.js";
 import { normalizeAdContent, type AdContent } from "../lib/adContent.js";
-import { prepareCreative } from "../lib/watermark.js";
+import { watermarkedCopyOf } from "../lib/watermark.js";
 import { toAuthorSummary } from "../lib/authors.js";
 import { createAdSchema } from "../validation/schemas.js";
 
@@ -50,10 +51,6 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     market: ad.market,
     language: ad.language,
     photo: ad.photoUrl ?? undefined,
-    // Whether `photo` has the watermark in the file (so pages don't draw it
-    // again), and the clean upload, which adForViewer only sends signed in.
-    watermarked: !!ad.originalPhotoUrl,
-    originalPhoto: ad.originalPhotoUrl ?? undefined,
     platforms: ad.platforms ? ad.platforms.split(",") : [],
     editable: ad.editable,
     canvaUrl: ad.canvaUrl ?? undefined,
@@ -90,8 +87,7 @@ export function adForViewer(req: AuthedRequest, options?: { full?: boolean }) {
   const canEdit = !!entitlementsOfRequest(req)?.editableCopies;
   return (ad: AdWithPeople) => {
     const res = toAdResponse(ad, options);
-    const forViewer = req.userId ? res : { ...res, originalPhoto: undefined };
-    return canEdit ? forViewer : { ...forViewer, canvaUrl: undefined };
+    return canEdit ? res : { ...res, canvaUrl: undefined };
   };
 }
 
@@ -123,20 +119,48 @@ router.get("/", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
   res.json({ ads: ads.map(adForViewer(req, { full: false })) });
 });
 
-// An ad whose slug was changed is still found by its old slug; the response's
-// ad.id is the current slug, which the page redirects to.
+// An ad whose slug was changed is still found by its old slug.
+async function findAdBySlug(slug: string) {
+  const ad = await prisma.ad.findUnique({ where: { slug }, include: adInclude });
+  if (ad) return ad;
+  const redirect = await prisma.adSlugRedirect.findUnique({
+    where: { oldSlug: slug },
+    include: { ad: { include: adInclude } },
+  });
+  return redirect?.ad ?? null;
+}
+
+// The response's ad.id is the current slug, which the page redirects to.
 router.get("/:slug", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
-  const slug = String(req.params.slug);
-  let ad = await prisma.ad.findUnique({ where: { slug }, include: adInclude });
-  if (!ad) {
-    const redirect = await prisma.adSlugRedirect.findUnique({
-      where: { oldSlug: slug },
-      include: { ad: { include: adInclude } },
-    });
-    ad = redirect?.ad ?? null;
-  }
+  const ad = await findAdBySlug(String(req.params.slug));
   if (!ad) return res.status(404).json({ error: "Ad not found" });
   res.json({ ad: adForViewer(req)(ad) });
+});
+
+// Download for anyone signed in: the clean creative for staff and paid
+// plans, the watermarked copy (made on first need) for everyone else. The
+// file is served as a download under the ad's keyword file name.
+router.get("/:slug/download", requireAuth, loadAccount, async (req: AuthedRequest, res) => {
+  const ad = await findAdBySlug(String(req.params.slug));
+  if (!ad?.photoUrl) return res.status(404).json({ error: "This ad has no image to download" });
+
+  const clean = !!entitlementsOfRequest(req)?.cleanDownload;
+  let file: string | null;
+  try {
+    file = clean ? ad.photoUrl : await watermarkedCopyOf(ad);
+  } catch (err) {
+    // Never fall back to the clean file for an unpaid download.
+    console.error("Watermarking the download failed:", err);
+    return res.status(500).json({ error: "Couldn't prepare the download. Try again." });
+  }
+  if (!file) return res.status(404).json({ error: "This ad has no image to download" });
+
+  const url = new URL(file);
+  const base = path.basename(ad.imageFileName || ad.slug, path.extname(ad.imageFileName || ""));
+  if (url.pathname.includes("/storage/v1/object/public/")) {
+    url.searchParams.set("download", `${base}${path.extname(url.pathname)}`);
+  }
+  res.json({ url: url.toString(), watermarked: !clean });
 });
 
 // Deleting is admin-only (stricter than publishing, which designers can also
@@ -304,10 +328,6 @@ router.post(
           slug,
           ...data,
           ...(await resolveAuthors(req.body)),
-          ...(await prepareCreative({
-            photoUrl: data.photoUrl,
-            fileName: data.imageFileName || slug,
-          })),
           tags: joinTags(await resolveTags(req.body.tags)),
           dateAdded: req.body.dateAdded || today(),
           dateUpdated: req.body.dateUpdated || req.body.dateAdded || today(),
@@ -371,11 +391,6 @@ router.put(
     }
 
     const data = toAdData(req.body);
-    const creative = await prepareCreative({
-      photoUrl: data.photoUrl,
-      fileName: data.imageFileName || newSlug,
-      existing: ad,
-    });
     const tags = joinTags(await resolveTags(req.body.tags));
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -390,7 +405,8 @@ router.put(
           ...data,
           ...people,
           slug: newSlug,
-          ...creative,
+          // A new image needs a new watermarked copy.
+          ...(data.photoUrl !== ad.photoUrl && { watermarkedPhotoUrl: null }),
           tags,
           dateAdded: req.body.dateAdded || ad.dateAdded || ad.createdAt,
           dateUpdated,

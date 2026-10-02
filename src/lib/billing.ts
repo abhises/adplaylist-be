@@ -211,7 +211,9 @@ export async function loadAccountForUser(
 export function entitlementsOf(account: Account | null): Entitlements {
   if (!account) return ALL_ENTITLEMENTS;
   const plan = isPlanId(account.plan) ? account.plan : "starter";
-  return entitlementsFor(plan, account.status as AccountStatus);
+  const entitlements = entitlementsFor(plan, account.status as AccountStatus);
+  // A trial cancelled before paying never became a paid plan.
+  return cancelledInTrial(account) ? { ...entitlements, cleanDownload: false } : entitlements;
 }
 
 // A trial that was cancelled: it ends when the trial would have, unpaid.

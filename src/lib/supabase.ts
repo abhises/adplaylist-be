@@ -29,3 +29,23 @@ export async function ensureUploadsBucket() {
     throw createError;
   }
 }
+
+export type StoredFile = { key: string; size: number };
+
+// Every file in a bucket, including those in folders.
+export async function listBucket(bucket: string, prefix = ""): Promise<StoredFile[]> {
+  const files: StoredFile[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .list(prefix, { limit: 1000, offset, sortBy: { column: "name", order: "asc" } });
+    if (error) throw error;
+    for (const item of data) {
+      const key = prefix ? `${prefix}/${item.name}` : item.name;
+      if (item.id === null) files.push(...(await listBucket(bucket, key)));
+      else files.push({ key, size: Number(item.metadata?.size ?? 0) });
+    }
+    if (data.length < 1000) break;
+  }
+  return files;
+}
