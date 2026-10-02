@@ -16,7 +16,7 @@ router.get("/", requireAuth, loadAccount, async (req: AuthedRequest, res) => {
     include: { ad: true },
     orderBy: { createdAt: "desc" },
   });
-  res.json({ ads: saved.map((s) => adForViewer(req)(s.ad)) });
+  res.json({ ads: saved.map((s) => adForViewer(req, { full: false })(s.ad)) });
 });
 
 // Unsaving stays open to everyone, so an expired account can still tidy up.

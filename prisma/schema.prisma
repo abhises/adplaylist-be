@@ -22,7 +22,7 @@ model Ad {
   brandName           String?           @map("brand_name") @db.VarChar(255)
   primaryText         String?           @map("primary_text") @db.Text
   creativeDescription String?           @map("creative_description") @db.Text
-  tags                String?           @db.VarChar(500)
+  tags                String?           @db.Text
   mediaType           String            @map("media_type") @db.VarChar(10)
   swatch              String            @db.VarChar(255)
   light               Boolean           @default(false)
@@ -40,10 +40,74 @@ model Ad {
   // library section, `showInHero` in the hero's product panel.
   featured            Boolean           @default(false)
   showInHero          Boolean           @default(false) @map("show_in_hero")
+
+  // SEO page fields, filled from the ad's CSV (see the "Adplaylist File"
+  // template). All optional: older ads fall back to generated values.
+  subcategory         String?           @db.VarChar(100)
+  // The creative style (Testimonial, UGC…). Not `format`, which holds the
+  // placement size.
+  adFormat            String?           @map("ad_format") @db.VarChar(50)
+  onImageText         String?           @map("on_image_text") @db.Text
+  seoTitle            String?           @map("seo_title") @db.VarChar(255)
+  metaDescription     String?           @map("meta_description") @db.VarChar(500)
+  pageHeadline        String?           @map("page_headline") @db.VarChar(255)
+  introParagraph      String?           @map("intro_paragraph") @db.Text
+  imageFileName       String?           @map("image_file_name") @db.VarChar(255)
+  imageAlt            String?           @map("image_alt") @db.VarChar(255)
+  imageCaption        String?           @map("image_caption") @db.VarChar(500)
+  // The long-form editorial sections (takeaways, why it works, breakdown,
+  // headline ideas, linking lists). Shape: AdContent in lib/adContent.ts.
+  content             Json?
+  authorId            Int?              @map("author_id")
+  reviewerId          Int?              @map("reviewer_id")
+  author              Author?           @relation("AdAuthor", fields: [authorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_author")
+  reviewer            Author?           @relation("AdReviewer", fields: [reviewerId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_reviewer")
+  // Shown on the page as "Added" / "Updated". dateAdded falls back to
+  // createdAt for ads published before these existed.
+  dateAdded           DateTime?         @map("date_added") @db.Date
+  dateUpdated         DateTime?         @map("date_updated") @db.Date
+
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
+  oldSlugs            AdSlugRedirect[]
 
+  @@index([authorId], map: "fk_ads_author")
+  @@index([reviewerId], map: "fk_ads_reviewer")
   @@map("ads")
+}
+
+// A slug an ad used to have, so links to it keep working after the slug is
+// changed (the ad page redirects permanently to the current slug).
+model AdSlugRedirect {
+  id        Int      @id @default(autoincrement())
+  oldSlug   String   @unique(map: "ad_slug_redirects_old_slug") @map("old_slug") @db.VarChar(150)
+  adId      Int      @map("ad_id")
+  ad        Ad       @relation(fields: [adId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ad_slug_redirects_ad")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@index([adId], map: "fk_ad_slug_redirects_ad")
+  @@map("ad_slug_redirects")
+}
+
+// A curator credited on ad pages ("Added by" / "Reviewed by"), with a public
+// profile at /authors/<slug>. Separate from users: an author doesn't need a
+// login, and a staff member's account details stay private.
+model Author {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique(map: "authors_slug") @db.VarChar(150)
+  name        String   @db.VarChar(255)
+  jobTitle    String?  @map("job_title") @db.VarChar(255)
+  // Short credentials line, e.g. "9 years in DTC paid social".
+  credentials String?  @db.VarChar(255)
+  bio         String?  @db.Text
+  photoUrl    String?  @map("photo_url") @db.VarChar(500)
+  linkedinUrl String?  @map("linkedin_url") @db.VarChar(500)
+  websiteUrl  String?  @map("website_url") @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  adsAdded    Ad[]     @relation("AdAuthor")
+  adsReviewed Ad[]     @relation("AdReviewer")
+
+  @@map("authors")
 }
 
 model CreativeRequest {

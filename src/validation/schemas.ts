@@ -31,32 +31,98 @@ export const tagSchema = Joi.object({
   name: tagName.required(),
 });
 
+// URL slugs for ads and authors: lowercase words joined by single hyphens.
+const urlSlug = Joi.string()
+  .trim()
+  .max(150)
+  .pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  .messages({
+    "string.pattern.base": "Slugs can only use lowercase letters, numbers and hyphens",
+  });
+
+const longText = Joi.string().trim().allow("").max(5000);
+const shortText = Joi.string().trim().allow("").max(1000);
+const textList = Joi.array().items(Joi.string().trim().allow("").max(500)).max(20);
+
+// The editorial sections of an ad page (see AdContent in lib/adContent.ts).
+const adContentSchema = Joi.object({
+  takeaways: Joi.object({
+    format: shortText,
+    bestFor: shortText,
+    hook: shortText,
+    reuse: shortText,
+  }),
+  whyItWorks: Joi.array()
+    .items(Joi.object({ title: shortText, text: shortText }))
+    .max(10),
+  targets: longText,
+  copywriting: longText,
+  visualDesign: longText,
+  adaptSteps: textList,
+  platformTips: longText,
+  headlineIdeas: textList,
+  collections: textList,
+  relatedGuides: textList,
+  popularSearches: textList,
+  relatedAds: textList,
+});
+
+// Column sizes come from the ads table, so a value that's too long is
+// rejected with a clear message instead of failing in the database.
 export const createAdSchema = Joi.object({
-  title: Joi.string().trim().min(1).required(),
-  format: Joi.string().trim().allow(""),
+  slug: urlSlug.allow(null, ""),
+  title: Joi.string().trim().min(1).max(255).required(),
+  format: Joi.string().trim().allow("").max(100),
   variant: Joi.string().trim().valid("overlay", "lockup"),
-  eyebrow: Joi.string().trim().allow(null, ""),
-  headline: Joi.string().trim().min(1).required(),
-  sub: Joi.string().trim().allow(null, ""),
-  cta: Joi.string().trim().allow(null, ""),
-  badge: Joi.string().trim().allow(null, ""),
+  eyebrow: Joi.string().trim().allow(null, "").max(100),
+  headline: Joi.string().trim().min(1).max(255).required(),
+  sub: Joi.string().trim().allow(null, "").max(255),
+  cta: Joi.string().trim().allow(null, "").max(100),
+  badge: Joi.string().trim().allow(null, "").max(100),
   description: Joi.string().trim().allow(null, ""),
   mediaType: Joi.string().trim().valid("image", "video"),
-  swatch: Joi.string().trim().allow(""),
+  swatch: Joi.string().trim().allow("").max(255),
   light: Joi.boolean(),
-  category: Joi.string().trim().min(1).required(),
+  category: Joi.string().trim().min(1).max(100).required(),
   market: Joi.string().trim().min(1).max(50).required(),
-  language: Joi.string().trim().allow(""),
-  photo: Joi.string().uri().allow(null, ""),
+  language: Joi.string().trim().allow("").max(50),
+  photo: Joi.string().uri().allow(null, "").max(500),
   platforms: Joi.array().items(Joi.string()),
   editable: Joi.boolean(),
-  canvaUrl: Joi.string().uri().allow(null, ""),
+  canvaUrl: Joi.string().uri().allow(null, "").max(500),
   primaryText: Joi.string().trim().allow(null, ""),
   brandName: Joi.string().trim().max(255).allow(null, ""),
   creativeDescription: Joi.string().trim().allow(null, ""),
   tags: Joi.array().items(tagName),
-  dominantColor: Joi.string().trim().allow(null, ""),
-  videoLength: Joi.string().trim().allow(null, ""),
+  dominantColor: Joi.string().trim().allow(null, "").max(30),
+  videoLength: Joi.string().trim().allow(null, "").max(20),
+  subcategory: Joi.string().trim().allow(null, "").max(100),
+  adFormat: Joi.string().trim().allow(null, "").max(50),
+  onImageText: Joi.string().trim().allow(null, "").max(5000),
+  seoTitle: Joi.string().trim().allow(null, "").max(255),
+  metaDescription: Joi.string().trim().allow(null, "").max(500),
+  pageHeadline: Joi.string().trim().allow(null, "").max(255),
+  introParagraph: Joi.string().trim().allow(null, "").max(5000),
+  imageFileName: Joi.string().trim().allow(null, "").max(255),
+  imageAlt: Joi.string().trim().allow(null, "").max(255),
+  imageCaption: Joi.string().trim().allow(null, "").max(500),
+  content: adContentSchema.allow(null),
+  // Authors are named by slug; unknown ones are rejected by the route.
+  authorSlug: Joi.string().trim().allow(null, "").max(150),
+  reviewerSlug: Joi.string().trim().allow(null, "").max(150),
+  dateAdded: Joi.date().iso().allow(null, ""),
+  dateUpdated: Joi.date().iso().allow(null, ""),
+});
+
+export const authorSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(255).required(),
+  slug: urlSlug.allow(null, ""),
+  jobTitle: Joi.string().trim().allow(null, "").max(255),
+  credentials: Joi.string().trim().allow(null, "").max(255),
+  bio: Joi.string().trim().allow(null, "").max(5000),
+  photoUrl: Joi.string().uri().allow(null, "").max(500),
+  linkedinUrl: Joi.string().uri().allow(null, "").max(500),
+  websiteUrl: Joi.string().uri().allow(null, "").max(500),
 });
 
 export const updateProfileSchema = Joi.object({

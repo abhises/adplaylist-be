@@ -36,7 +36,7 @@ function toRequestResponse(
     reason: request.reason ?? undefined,
     attachmentUrl: request.attachmentUrl ?? undefined,
     attachmentName: request.attachmentName ?? undefined,
-    ad: ad ? toAdResponse(ad) : undefined,
+    ad: ad ? toAdResponse(ad, { full: false }) : undefined,
     requester: requester
       ? { fullName: requester.fullName, email: requester.email }
       : undefined,
