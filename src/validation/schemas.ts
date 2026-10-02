@@ -228,6 +228,26 @@ export const createFeedbackSchema = Joi.object({
   pageUrl: Joi.string().trim().max(500).allow(null, ""),
 });
 
+// The landing page's "Talk to us" form (custom volume / enterprise). Public,
+// so `website` is a honeypot: a field people never see, which bots fill in.
+export const contactSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(255).required(),
+  email: Joi.string().trim().email().max(255).required(),
+  company: Joi.string().trim().max(255).allow(null, ""),
+  volume: Joi.string().trim().max(50).allow(null, ""),
+  message: Joi.string().trim().min(1).max(5000).required(),
+  website: Joi.string().allow(null, ""),
+});
+
+export const contactReplySchema = Joi.object({
+  subject: Joi.string().trim().min(1).max(255).required(),
+  body: Joi.string().trim().min(1).max(20000).required(),
+});
+
+export const contactStatusSchema = Joi.object({
+  status: Joi.string().valid("new", "replied", "closed").required(),
+});
+
 export const updateFeedbackSchema = Joi.object({
   resolved: Joi.boolean().required(),
 });

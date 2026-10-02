@@ -20,6 +20,7 @@ import tagsRoutes from "./routes/tags.js";
 import blogPostsRoutes from "./routes/blogPosts.js";
 import feedbackRoutes from "./routes/feedback.js";
 import authorsRoutes from "./routes/authors.js";
+import contactRoutes from "./routes/contact.js";
 import billingRoutes, { webhookHandler as stripeWebhook } from "./routes/billing.js";
 import plansRoutes from "./routes/plans.js";
 import { Prisma } from "./generated/prisma/client.js";
@@ -70,6 +71,7 @@ app.use("/api/blog-posts", blogPostsRoutes);
 app.use("/api/brand-pages", brandPagesRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/authors", authorsRoutes);
+app.use("/api/contact", contactRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/plans", plansRoutes);
 

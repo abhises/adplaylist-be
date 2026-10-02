@@ -178,6 +178,7 @@ model User {
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
   feedback            Feedback[]
+  contactReplies      ContactReply[]
 
   @@index([accountId], map: "fk_users_account")
   @@map("users")
@@ -327,3 +328,40 @@ model PlanPrice {
   @@id([plan, volume])
   @@map("plan_prices")
 }
+
+// An enquiry from the landing page's "Talk to us" form (custom volume,
+// custom price). Admins answer it from Admin → Contact; each answer is
+// emailed to the sender from info@adplaylist.com and kept as a reply.
+model ContactEnquiry {
+  id        Int            @id @default(autoincrement())
+  name      String         @db.VarChar(255)
+  email     String         @db.VarChar(255)
+  company   String?        @db.VarChar(255)
+  // Custom ads per month they asked about, e.g. "250–500".
+  volume    String?        @db.VarChar(50)
+  message   String         @db.Text
+  // new → replied (after the first reply) → closed (by an admin).
+  status    String         @default("new") @db.VarChar(20)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  replies   ContactReply[]
+
+  @@index([status], map: "contact_enquiries_status")
+  @@map("contact_enquiries")
+}
+
+model ContactReply {
+  id        Int            @id @default(autoincrement())
+  enquiryId Int            @map("enquiry_id")
+  subject   String         @db.VarChar(255)
+  body      String         @db.Text
+  // The admin who sent it; kept if they're later removed.
+  sentById  Int?           @map("sent_by_id")
+  sentAt    DateTime       @default(now()) @map("sent_at") @db.Timestamp(0)
+  enquiry   ContactEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_contact_replies_enquiry")
+  sentBy    User?          @relation(fields: [sentById], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_contact_replies_user")
+
+  @@index([enquiryId], map: "fk_contact_replies_enquiry")
+  @@index([sentById], map: "fk_contact_replies_user")
+  @@map("contact_replies")
+}
+
