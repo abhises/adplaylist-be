@@ -1,6 +1,3 @@
-import crypto from "node:crypto";
-import path from "node:path";
-import { supabase, UPLOADS_BUCKET } from "./supabase.js";
 
 // The long-form sections of an ad's public page, stored in ads.content.
 // Every part is optional; the page leaves out a section with nothing in it.
@@ -67,45 +64,4 @@ export function normalizeAdContent(input: unknown): AdContent | null {
   }
 
   return Object.keys(out).length ? out : null;
-}
-
-// The storage key of a file in our uploads bucket, from its public URL; null
-// for an image hosted anywhere else.
-function storageKey(url: string): string | null {
-  const marker = `/object/public/${UPLOADS_BUCKET}/`;
-  const i = url.indexOf(marker);
-  return i === -1 ? null : decodeURIComponent(url.slice(i + marker.length));
-}
-
-// Google Images reads the file name, so a creative is served under the
-// keyword file name from the ad's CSV (e.g. dog-food-testimonial-ad-1200x1200.png)
-// instead of the random name it was uploaded with. The file is copied once,
-// into its own folder so two ads can use the same name; the copy keeps the
-// uploaded file's real extension. Anything that can't be copied keeps its
-// current URL, since a working image matters more than its name.
-export async function withSeoFileName(
-  photoUrl: string | null,
-  fileName: string | null
-): Promise<string | null> {
-  if (!photoUrl || !fileName) return photoUrl;
-  const key = storageKey(photoUrl);
-  if (!key) return photoUrl;
-
-  const ext = path.extname(key).toLowerCase();
-  const base = path
-    .basename(fileName, path.extname(fileName))
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-  if (!base) return photoUrl;
-  const wanted = `${base}${ext}`;
-  if (path.basename(key) === wanted) return photoUrl;
-
-  const newKey = `ads/${crypto.randomBytes(4).toString("hex")}/${wanted}`;
-  const { error } = await supabase.storage.from(UPLOADS_BUCKET).copy(key, newKey);
-  if (error) {
-    console.error("Could not copy creative to its SEO file name:", error);
-    return photoUrl;
-  }
-  return supabase.storage.from(UPLOADS_BUCKET).getPublicUrl(newKey).data.publicUrl;
 }

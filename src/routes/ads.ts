@@ -11,7 +11,8 @@ import {
 } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { joinTags, resolveTags, splitTags } from "../lib/tags.js";
-import { normalizeAdContent, withSeoFileName, type AdContent } from "../lib/adContent.js";
+import { normalizeAdContent, type AdContent } from "../lib/adContent.js";
+import { prepareCreative } from "../lib/watermark.js";
 import { toAuthorSummary } from "../lib/authors.js";
 import { createAdSchema } from "../validation/schemas.js";
 
@@ -49,6 +50,10 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     market: ad.market,
     language: ad.language,
     photo: ad.photoUrl ?? undefined,
+    // Whether `photo` has the watermark in the file (so pages don't draw it
+    // again), and the clean upload, which adForViewer only sends signed in.
+    watermarked: !!ad.originalPhotoUrl,
+    originalPhoto: ad.originalPhotoUrl ?? undefined,
     platforms: ad.platforms ? ad.platforms.split(",") : [],
     editable: ad.editable,
     canvaUrl: ad.canvaUrl ?? undefined,
@@ -85,7 +90,8 @@ export function adForViewer(req: AuthedRequest, options?: { full?: boolean }) {
   const canEdit = !!entitlementsOfRequest(req)?.editableCopies;
   return (ad: AdWithPeople) => {
     const res = toAdResponse(ad, options);
-    return canEdit ? res : { ...res, canvaUrl: undefined };
+    const forViewer = req.userId ? res : { ...res, originalPhoto: undefined };
+    return canEdit ? forViewer : { ...forViewer, canvaUrl: undefined };
   };
 }
 
@@ -256,14 +262,27 @@ async function resolveAuthors(body: Record<string, any>) {
   };
 }
 
-// Whether `slug` is free for ad `adId` (null for a new ad): not another ad's
-// slug, nor an old slug that redirects to another ad.
-async function slugTaken(slug: string, adId: number | null) {
+// The other ad using `slug` (as its slug, or an old slug that redirects to
+// it), or null when it's free for ad `adId` (null for a new ad).
+async function slugOwner(slug: string, adId: number | null) {
   const [ad, redirect] = await Promise.all([
-    prisma.ad.findUnique({ where: { slug }, select: { id: true } }),
-    prisma.adSlugRedirect.findUnique({ where: { oldSlug: slug } }),
+    prisma.ad.findUnique({ where: { slug }, select: { id: true, slug: true, title: true } }),
+    prisma.adSlugRedirect.findUnique({
+      where: { oldSlug: slug },
+      include: { ad: { select: { id: true, slug: true, title: true } } },
+    }),
   ]);
-  return (!!ad && ad.id !== adId) || (!!redirect && redirect.adId !== adId);
+  const owner = ad ?? redirect?.ad ?? null;
+  return owner && owner.id !== adId ? owner : null;
+}
+
+// The 409 for a taken slug: names the ad that has it, so the editor can
+// link to it (it may be this same ad, published a moment ago).
+function slugTakenResponse(slug: string, owner: { slug: string; title: string }) {
+  return {
+    error: `The URL slug "${slug}" is already used by "${owner.title}". If that's this ad, it's already published; otherwise change the URL slug and publish again.`,
+    existingAd: { id: owner.slug, title: owner.title },
+  };
 }
 
 router.post(
@@ -274,11 +293,8 @@ router.post(
   async (req: AuthedRequest, res) => {
     const slug = req.body.slug || slugifyTitle(String(req.body.title));
     if (!slug) return res.status(400).json({ error: "The ad needs a name or URL slug" });
-    if (await slugTaken(slug, null)) {
-      return res
-        .status(409)
-        .json({ error: `An ad already uses the URL slug "${slug}"` });
-    }
+    const owner = await slugOwner(slug, null);
+    if (owner) return res.status(409).json(slugTakenResponse(slug, owner));
 
     let created;
     try {
@@ -288,7 +304,10 @@ router.post(
           slug,
           ...data,
           ...(await resolveAuthors(req.body)),
-          photoUrl: await withSeoFileName(data.photoUrl, data.imageFileName),
+          ...(await prepareCreative({
+            photoUrl: data.photoUrl,
+            fileName: data.imageFileName || slug,
+          })),
           tags: joinTags(await resolveTags(req.body.tags)),
           dateAdded: req.body.dateAdded || today(),
           dateUpdated: req.body.dateUpdated || req.body.dateAdded || today(),
@@ -329,11 +348,8 @@ router.put(
     if (!ad) return res.status(404).json({ error: "Ad not found" });
 
     const newSlug: string = req.body.slug || ad.slug;
-    if (newSlug !== ad.slug && (await slugTaken(newSlug, ad.id))) {
-      return res
-        .status(409)
-        .json({ error: `An ad already uses the URL slug "${newSlug}"` });
-    }
+    const owner = newSlug !== ad.slug ? await slugOwner(newSlug, ad.id) : null;
+    if (owner) return res.status(409).json(slugTakenResponse(newSlug, owner));
 
     // Saving counts as an update unless a different date was picked by hand.
     const sentUpdated = req.body.dateUpdated
@@ -355,7 +371,11 @@ router.put(
     }
 
     const data = toAdData(req.body);
-    const photoUrl = await withSeoFileName(data.photoUrl, data.imageFileName);
+    const creative = await prepareCreative({
+      photoUrl: data.photoUrl,
+      fileName: data.imageFileName || newSlug,
+      existing: ad,
+    });
     const tags = joinTags(await resolveTags(req.body.tags));
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -370,7 +390,7 @@ router.put(
           ...data,
           ...people,
           slug: newSlug,
-          photoUrl,
+          ...creative,
           tags,
           dateAdded: req.body.dateAdded || ad.dateAdded || ad.createdAt,
           dateUpdated,
