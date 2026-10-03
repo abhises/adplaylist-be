@@ -9,6 +9,7 @@ import {
   syncSubscription,
   toAccountResponse,
 } from "../lib/billing.js";
+import { TRIAL_DAYS } from "../lib/plans.js";
 import { prisma } from "../lib/prisma.js";
 import {
   loadAccount,
@@ -23,9 +24,6 @@ const router = Router();
 
 // Tags our Checkout Sessions in the Stripe Dashboard.
 const INTEGRATION_IDENTIFIER = "adplaylist_plans_kqvmzrta";
-// Stripe needs a Checkout trial to end at least 48 hours out; with less of
-// the app trial left than this, checkout charges straight away instead.
-const MIN_CHECKOUT_TRIAL_MS = 49 * 60 * 60 * 1000;
 
 function frontendUrl() {
   return (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -84,14 +82,9 @@ router.post(
       });
     }
 
-    // Subscribing during the trial keeps the trial: the card is saved now and
-    // first charged when the trial ends (day 8). After it, pay straight away.
-    const trialEnd =
-      account.status === "trial" &&
-      account.trialEndsAt &&
-      account.trialEndsAt.getTime() - Date.now() > MIN_CHECKOUT_TRIAL_MS
-        ? Math.floor(account.trialEndsAt.getTime() / 1000)
-        : undefined;
+    // The free trial starts here, when the card is added: it's saved now and
+    // first charged after TRIAL_DAYS (day 8). After a trial, pay straight away.
+    const trial = account.status === "trial";
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -99,7 +92,7 @@ router.post(
       client_reference_id: String(account.id),
       line_items: [{ price: await priceIdFor(plan, volume, cycle), quantity: 1 }],
       subscription_data: {
-        ...(trialEnd ? { trial_end: trialEnd } : {}),
+        ...(trial ? { trial_period_days: TRIAL_DAYS } : {}),
         metadata: { account_id: String(account.id) },
       },
       integration_identifier: INTEGRATION_IDENTIFIER,

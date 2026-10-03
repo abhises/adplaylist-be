@@ -148,22 +148,17 @@ async function updateAccount(account: Account, data: Partial<Account>, grant?: G
   });
 }
 
-// Applies the time-based transitions that no webhook announces — a trial
-// with no card running out, the past-due grace period ending, a cancelled
+// Applies the time-based transitions that no webhook announces — the
+// past-due grace period ending, a cancelled
 // plan reaching its end date — and the monthly refill on yearly plans.
 // Called whenever an account is loaded, so state is right without a cron.
 export async function refreshAccount(account: Account): Promise<Account> {
   const now = new Date();
   let data: Partial<Account> | null = null;
 
+  // (A trial with no card hasn't started yet: it begins, for TRIAL_DAYS,
+  // when the owner adds a card at checkout, so it doesn't run out here.)
   if (
-    account.status === "trial" &&
-    !account.stripeSubscriptionId &&
-    account.trialEndsAt &&
-    account.trialEndsAt <= now
-  ) {
-    data = EXPIRED;
-  } else if (
     account.status === "past_due" &&
     account.pastDueSince &&
     account.pastDueSince.getTime() + PAST_DUE_GRACE_DAYS * DAY_MS <= now.getTime()
@@ -211,9 +206,18 @@ export async function loadAccountForUser(
 export function entitlementsOf(account: Account | null): Entitlements {
   if (!account) return ALL_ENTITLEMENTS;
   const plan = isPlanId(account.plan) ? account.plan : "starter";
+  // The free trial needs a card on file (a Stripe subscription) before
+  // anything unlocks; until then the account can only browse, like expired.
+  if (needsCard(account)) return entitlementsFor(plan, "expired");
   const entitlements = entitlementsFor(plan, account.status as AccountStatus);
   // A trial cancelled before paying never became a paid plan.
   return cancelledInTrial(account) ? { ...entitlements, cleanDownload: false } : entitlements;
+}
+
+// A trial without a card yet: sign-up creates the account, but the trial only
+// unlocks once the owner adds a card through Stripe Checkout.
+export function needsCard(account: Account) {
+  return account.status === "trial" && !account.stripeSubscriptionId;
 }
 
 // A trial that was cancelled: it ends when the trial would have, unpaid.
@@ -256,6 +260,7 @@ export function toAccountResponse(account: Account, accountRole: string | null) 
     nextRefillAt:
       account.billingCycle === "yearly" ? account.nextRefillAt : account.currentPeriodEnd,
     hasSubscription: !!account.stripeSubscriptionId,
+    needsCard: needsCard(account),
     cancelledInTrial: cancelledInTrial(account),
     maxBrands: def.maxBrands,
     maxSeats: def.maxSeats,

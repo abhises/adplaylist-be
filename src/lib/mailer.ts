@@ -97,7 +97,8 @@ export function welcomeEmail(fullName: string, trialDays: number) {
 
   const text = `Hi ${firstName},
 
-Welcome to Adplaylist! Your account is ready, and your ${trialDays}-day free trial has started.
+Welcome to Adplaylist! Your account is ready. Pick a plan and add your card to start your ${trialDays}-day free trial: ${site}/billing
+You won't be charged until the trial ends, and you can cancel any time before then.
 
 Here's how to get going:
 1. Browse the library: ${site}/library
@@ -130,7 +131,7 @@ The Adplaylist team`;
 <title>${escapeHtml(subject)}</title>
 </head>
 <body style="margin:0;padding:0;background:#F3F2F0;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your account is ready and your ${trialDays}-day free trial has started.</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your account is ready. Start your ${trialDays}-day free trial: nothing is charged until it ends.</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F2F0;">
     <tr>
       <td align="center" style="padding:32px 16px;">
@@ -142,11 +143,11 @@ The Adplaylist team`;
               <div style="font-size:13px;font-weight:800;letter-spacing:3px;text-transform:uppercase;">Adplaylist</div>
               <div style="margin-top:40px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;">Welcome aboard, ${escapeHtml(firstName)}</div>
               <h1 style="margin:12px 0 0 0;font-size:44px;line-height:1;font-weight:800;letter-spacing:-1.5px;color:#ffffff;">Your next ad is already made.</h1>
-              <p style="margin:20px 0 0 0;font-size:17px;line-height:1.5;color:#ffffff;">Your account is ready, and your <strong>${trialDays}-day free trial</strong> has started. Everything your team has ever shipped is now one search away.</p>
+              <p style="margin:20px 0 0 0;font-size:17px;line-height:1.5;color:#ffffff;">Your account is ready. Pick a plan and add your card to start your <strong>${trialDays}-day free trial</strong>. You won't be charged until it ends, and you can cancel any time before then.</p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
                 <tr>
                   <td style="background:#161514;">
-                    <a href="${site}/library" style="display:inline-block;padding:16px 28px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">Open the library &rarr;</a>
+                    <a href="${site}/billing" style="display:inline-block;padding:16px 28px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">Start your free trial &rarr;</a>
                   </td>
                 </tr>
               </table>
