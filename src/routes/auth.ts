@@ -6,6 +6,7 @@ import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { googleAuthSchema, loginSchema, registerSchema } from "../validation/schemas.js";
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
+import { sendWelcomeEmail } from "../lib/mailer.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { userResponseFor } from "./profile.js";
 
@@ -57,6 +58,8 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
+  if (role === "client") sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
+
   res.status(201).json({ token, user: await userResponseFor(user.id) });
 });
 
@@ -99,6 +102,7 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
     where: { googleId: googleUser.googleId },
   });
 
+  let isNewUser = false;
   if (!user) {
     const existingByEmail = await prisma.user.findUnique({
       where: { email: googleUser.email },
@@ -118,10 +122,13 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
             ...newOwnerAccount("client", googleUser.fullName),
           },
         });
+    isNewUser = !existingByEmail;
   }
 
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
+
+  if (isNewUser) sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
 
   res.json({ token, user: await userResponseFor(user.id) });
 });
