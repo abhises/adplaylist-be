@@ -10,6 +10,7 @@ import {
 import { refundCredit, refundRequestCredit, spendCredit } from "../lib/billing.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
+  canvaRequestSchema,
   createRequestSchema,
   declineRequestSchema,
   deliverRequestSchema,
@@ -19,6 +20,8 @@ import { toAdResponse } from "./ads.js";
 import type { Ad, CreativeRequest, User } from "../generated/prisma/client.js";
 
 const router = Router();
+
+const CANVA_EDIT = "Canva edit";
 
 function toRequestResponse(
   request: CreativeRequest,
@@ -129,6 +132,77 @@ router.post(
     }
 
     res.status(201).json({ request: toRequestResponse(created) });
+  }
+);
+
+// "Request Canva Edit": asks the team to add an editable Canva copy to an ad
+// that doesn't have one. Costs a customer one credit, like any request, and
+// shows in their credit history; asking twice for the same ad while the first
+// is still open doesn't charge again.
+router.post(
+  "/canva",
+  requireAuth,
+  loadAccount,
+  requireEntitlement("requests"),
+  validateBody(canvaRequestSchema),
+  async (req: AuthedRequest, res) => {
+    const ad = await prisma.ad.findUnique({ where: { slug: req.body.adId } });
+    if (!ad) return res.status(404).json({ error: "Ad not found" });
+    if (ad.canvaUrl) {
+      return res.status(409).json({ error: "This ad already has a Canva copy." });
+    }
+
+    const account = req.userRole === "client" ? req.account ?? null : null;
+    if (req.userRole === "client" && !account) {
+      return res.status(402).json({ error: "Choose a plan to request ads.", upgrade: true });
+    }
+
+    const open = await prisma.creativeRequest.findFirst({
+      where: {
+        adId: ad.id,
+        type: CANVA_EDIT,
+        status: "Open",
+        ...(account ? { accountId: account.id } : { userId: req.userId! }),
+      },
+    });
+    if (open) return res.json({ request: toRequestResponse(open, ad), alreadyRequested: true });
+
+    const title = `Canva edit: ${ad.title}`;
+    const spentEntryId = account ? await spendCredit(account.id, title) : null;
+    if (account && !spentEntryId) {
+      return res.status(402).json({
+        error: "You're out of credits.",
+        upgrade: true,
+        outOfCredits: true,
+      });
+    }
+
+    let created;
+    try {
+      created = await prisma.creativeRequest.create({
+        data: {
+          userId: req.userId!,
+          accountId: account?.id ?? null,
+          creditCharged: !!account,
+          title,
+          type: CANVA_EDIT,
+          notes: "Add an editable Canva copy of this ad.",
+          status: "Open",
+          adId: ad.id,
+        },
+      });
+    } catch (err) {
+      if (account) await refundCredit(account.id, `Request failed to save: ${title}`);
+      throw err;
+    }
+    if (spentEntryId) {
+      await prisma.creditTransaction.update({
+        where: { id: spentEntryId },
+        data: { requestId: created.id },
+      });
+    }
+
+    res.status(201).json({ request: toRequestResponse(created, ad), alreadyRequested: false });
   }
 );
 

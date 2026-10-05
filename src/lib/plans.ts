@@ -99,10 +99,10 @@ export function productId(plan: PlanId, volume: number) {
   return `adplaylist_${plan}_${volume}`;
 }
 
-export function productName(plan: PlanId, volume: number) {
+export function productName(plan: PlanId, credits: number) {
   return plan === "starter"
     ? "Adplaylist Starter"
-    : `Adplaylist ${PLANS[plan].name} – ${volume} credits/month`;
+    : `Adplaylist ${PLANS[plan].name} – ${credits} credits/month`;
 }
 
 // What an account may do right now, from its plan and status. Staff (no

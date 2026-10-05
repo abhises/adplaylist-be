@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import type { Account, Prisma, User } from "../generated/prisma/client.js";
 import { prisma } from "./prisma.js";
+import { tierCredits } from "./catalog.js";
 import {
   ALL_ENTITLEMENTS,
   PAST_DUE_GRACE_DAYS,
@@ -86,9 +87,9 @@ type Grant = {
   invoiceId?: string | null;
 };
 
-function planLabel(plan: string, volume: number) {
+function planLabel(plan: string, credits: number) {
   const name = isPlanId(plan) ? PLANS[plan].name : plan;
-  return volume ? `${name} ${volume}` : name;
+  return credits ? `${name} ${credits}` : name;
 }
 
 // Records a change of balance from `before` to `after`. Credits don't roll
@@ -176,13 +177,15 @@ export async function refreshAccount(account: Account): Promise<Account> {
     account.nextRefillAt &&
     account.nextRefillAt <= now
   ) {
-    // Credits don't roll over: a refill resets the balance to the volume.
+    // Credits don't roll over: a refill resets the balance to the tier's
+    // monthly credits.
     let next = account.nextRefillAt;
     while (next <= now) next = addMonths(next, 1);
+    const monthly = await tierCredits(account.plan, account.creditVolume);
     return updateAccount(
       account,
-      { credits: account.creditVolume, nextRefillAt: next },
-      { reason: "refill", note: `Monthly credits · ${planLabel(account.plan, account.creditVolume)}` }
+      { credits: monthly, nextRefillAt: next },
+      { reason: "refill", note: `Monthly credits · ${planLabel(account.plan, monthly)}` }
     );
   }
 
@@ -230,15 +233,18 @@ function cancelledInTrial(account: Account) {
   );
 }
 
-export function toAccountResponse(account: Account, accountRole: string | null) {
+export async function toAccountResponse(account: Account, accountRole: string | null) {
   const plan = isPlanId(account.plan) ? account.plan : "starter";
   const def = PLANS[plan];
+  const creditsPerMonth = await tierCredits(plan, account.creditVolume);
   return {
     id: account.id,
     name: account.name,
     plan,
     planName: def.name,
     creditVolume: account.creditVolume,
+    // Credits a month the account's tier gives (admins can change it).
+    creditsPerMonth,
     billingCycle: account.billingCycle,
     status: account.status,
     trialEndsAt: account.trialEndsAt,
@@ -255,7 +261,7 @@ export function toAccountResponse(account: Account, accountRole: string | null) 
         ? 0
         : account.status === "trial" || cancelledInTrial(account)
           ? def.trialCredits
-          : account.creditVolume,
+          : creditsPerMonth,
     // Monthly plans refill on renewal; yearly ones on nextRefillAt.
     nextRefillAt:
       account.billingCycle === "yearly" ? account.nextRefillAt : account.currentPeriodEnd,
@@ -409,7 +415,7 @@ export async function syncSubscription(subscriptionId: string): Promise<Account 
     // Agency, 0 for Starter) when it starts. Moving to a plan with more
     // trial credits mid-trial tops up the difference, so switching plans
     // can't be used to reset spent credits.
-    const note = `Trial credits · ${planLabel(plan, volume)}`;
+    const note = `Trial credits · ${planLabel(plan, await tierCredits(plan, volume))}`;
     const invoiceId =
       typeof sub.latest_invoice === "string" ? sub.latest_invoice : sub.latest_invoice?.id ?? null;
     if (account.stripeSubscriptionId !== sub.id) {
@@ -456,6 +462,7 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const sub = await getStripe().subscriptions.retrieve(subscriptionId);
   const periodStart = fromUnix(sub.items.data[0]?.current_period_start) ?? new Date();
 
+  const monthly = await tierCredits(account.plan, account.creditVolume);
   // Conditional on the invoice id so two deliveries racing each other can't
   // both refill.
   await prisma.$transaction(async (tx) => {
@@ -465,7 +472,7 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
         OR: [{ lastRefillInvoiceId: null }, { lastRefillInvoiceId: { not: invoice.id } }],
       },
       data: {
-        credits: account.creditVolume,
+        credits: monthly,
         lastRefillInvoiceId: invoice.id,
         nextRefillAt:
           account.billingCycle === "yearly"
@@ -476,12 +483,12 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
       },
     });
     if (count === 1) {
-      const label = planLabel(account.plan, account.creditVolume);
+      const label = planLabel(account.plan, monthly);
       await logBalanceChange(
         tx,
         account.id,
         account.credits,
-        account.creditVolume,
+        monthly,
         isUpgrade
           ? { reason: "upgrade", note: `Upgraded to ${label}`, invoiceId: invoice.id }
           : { reason: "refill", note: `Monthly credits · ${label}`, invoiceId: invoice.id }

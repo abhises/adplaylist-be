@@ -8,6 +8,7 @@ import { prisma } from "./prisma.js";
 import {
   PLANS,
   PLAN_IDS,
+  isPlanId,
   lookupKey,
   productId,
   productName,
@@ -15,7 +16,10 @@ import {
   type PlanId,
 } from "./plans.js";
 
-export type PriceTable = Record<PlanId, Record<number, { monthly: number; yearly: number }>>;
+// Per plan, keyed by credit volume (the tier's fixed id): prices in cents and
+// the credits a month the tier gives (editable; starts equal to the volume).
+export type TierPrice = { monthly: number; yearly: number; credits: number };
+export type PriceTable = Record<PlanId, Record<number, TierPrice>>;
 
 const CYCLES: BillingCycle[] = ["monthly", "yearly"];
 const TABLE_CACHE_MS = 60 * 1000;
@@ -26,7 +30,7 @@ function defaults(): PriceTable {
     PLAN_IDS.map((plan) => [
       plan,
       Object.fromEntries(
-        Object.entries(PLANS[plan].prices).map(([v, p]) => [Number(v), { ...p }])
+        Object.entries(PLANS[plan].prices).map(([v, p]) => [Number(v), { ...p, credits: Number(v) }])
       ),
     ])
   ) as PriceTable;
@@ -41,11 +45,21 @@ export async function getPriceTable(): Promise<PriceTable> {
   for (const row of rows) {
     const tiers = table[row.plan as PlanId];
     if (tiers && row.volume in tiers) {
-      tiers[row.volume] = { monthly: row.monthlyCents, yearly: row.yearlyCents };
+      tiers[row.volume] = {
+        monthly: row.monthlyCents,
+        yearly: row.yearlyCents,
+        credits: row.credits,
+      };
     }
   }
   cached = { table, at: Date.now() };
   return table;
+}
+
+// The credits a month an account on this plan + volume gets.
+export async function tierCredits(plan: string, volume: number) {
+  if (!isPlanId(plan)) return volume;
+  return (await getPriceTable())[plan][volume]?.credits ?? volume;
 }
 
 async function ensureProduct(stripe: Stripe, id: string, name: string) {
@@ -136,7 +150,11 @@ export async function syncStripeCatalog(
         }
         // Missing in Stripe: fall through and create it.
       }
-      const product = await ensureProduct(stripe, productId(plan, volume), productName(plan, volume));
+      const product = await ensureProduct(
+        stripe,
+        productId(plan, volume),
+        productName(plan, amounts.credits)
+      );
       const prices: string[] = [];
       for (const cycle of CYCLES) {
         const key = lookupKey(plan, volume, cycle);
@@ -194,7 +212,7 @@ let queue: Promise<unknown> = Promise.resolve();
 export function setPlanPrice(
   plan: PlanId,
   volume: number,
-  cents: { monthly: number; yearly: number },
+  cents: TierPrice,
   adminId: number
 ): Promise<PriceTable> {
   const run = queue.then(() => applyPlanPrice(plan, volume, cents, adminId));
@@ -205,24 +223,46 @@ export function setPlanPrice(
 async function applyPlanPrice(
   plan: PlanId,
   volume: number,
-  cents: { monthly: number; yearly: number },
+  cents: TierPrice,
   adminId: number
 ) {
   cached = null;
   const table = await getPriceTable();
   const next: PriceTable = { ...table, [plan]: { ...table[plan], [volume]: cents } };
   await syncStripeCatalog(next, { plan, volume });
-  await prisma.planPrice.upsert({
-    where: { plan_volume: { plan, volume } },
-    create: {
-      plan,
-      volume,
-      monthlyCents: cents.monthly,
-      yearlyCents: cents.yearly,
-      updatedById: adminId,
-    },
-    update: { monthlyCents: cents.monthly, yearlyCents: cents.yearly, updatedById: adminId },
-  });
+  const old = table[plan][volume];
+  await prisma.$transaction([
+    prisma.planPrice.upsert({
+      where: { plan_volume: { plan, volume } },
+      create: {
+        plan,
+        volume,
+        monthlyCents: cents.monthly,
+        yearlyCents: cents.yearly,
+        credits: cents.credits,
+        updatedById: adminId,
+      },
+      update: {
+        monthlyCents: cents.monthly,
+        yearlyCents: cents.yearly,
+        credits: cents.credits,
+        updatedById: adminId,
+      },
+    }),
+    prisma.planPriceChange.create({
+      data: {
+        plan,
+        volume,
+        oldMonthlyCents: old?.monthly ?? null,
+        oldYearlyCents: old?.yearly ?? null,
+        oldCredits: old?.credits ?? null,
+        monthlyCents: cents.monthly,
+        yearlyCents: cents.yearly,
+        credits: cents.credits,
+        changedById: adminId,
+      },
+    }),
+  ]);
   cached = null;
   return getPriceTable();
 }

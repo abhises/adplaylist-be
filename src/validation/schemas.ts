@@ -147,6 +147,11 @@ export const createRequestSchema = Joi.object({
   attachmentName: Joi.string().trim().allow(null, ""),
 });
 
+// "Request Canva Edit" on an ad that has no Canva link yet.
+export const canvaRequestSchema = Joi.object({
+  adId: Joi.string().trim().min(1).required(),
+});
+
 export const deliverRequestSchema = Joi.object({
   adId: Joi.string().trim().min(1).required(),
 });
@@ -278,4 +283,21 @@ export const planPriceParamsSchema = Joi.object({
 export const planPriceSchema = Joi.object({
   monthly: priceDollars.required(),
   yearly: priceDollars.required(),
+});
+
+// Several prices saved together from the pricing admin's one Save button.
+export const planPricesSchema = Joi.object({
+  changes: Joi.array()
+    .items(
+      Joi.object({
+        plan: Joi.string().valid(...PLAN_IDS).required(),
+        volume: Joi.number().integer().min(0).required(),
+        monthly: priceDollars.required(),
+        yearly: priceDollars.required(),
+        credits: Joi.number().integer().min(0).max(10000).required(),
+      })
+    )
+    .min(1)
+    .max(50)
+    .required(),
 });

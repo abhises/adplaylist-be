@@ -17,6 +17,7 @@ export function toPlansResponse(table: PriceTable) {
       volume: Number(volume),
       monthly: cents.monthly / 100,
       yearly: cents.yearly / 100,
+      credits: cents.credits,
     })),
   }));
 }

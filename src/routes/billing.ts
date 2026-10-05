@@ -29,9 +29,9 @@ function frontendUrl() {
   return (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
 }
 
-router.get("/", requireAuth, loadAccount, (req: AuthedRequest, res) => {
+router.get("/", requireAuth, loadAccount, async (req: AuthedRequest, res) => {
   res.json({
-    account: req.account ? toAccountResponse(req.account, req.accountRole ?? null) : null,
+    account: req.account ? await toAccountResponse(req.account, req.accountRole ?? null) : null,
   });
 });
 
@@ -125,7 +125,7 @@ router.post(
     }
     await fulfilCheckout(session);
     const updated = await prisma.account.findUnique({ where: { id: account.id } });
-    res.json({ account: toAccountResponse(updated!, req.accountRole ?? null) });
+    res.json({ account: await toAccountResponse(updated!, req.accountRole ?? null) });
   }
 );
 
@@ -276,7 +276,7 @@ router.post(
       throw err;
     }
     const updated = await refreshFromStripe(account);
-    res.json({ account: toAccountResponse(updated, req.accountRole ?? null) });
+    res.json({ account: await toAccountResponse(updated, req.accountRole ?? null) });
   }
 );
 
@@ -285,7 +285,7 @@ router.post(
 router.post("/sync", requireAuth, loadAccount, async (req: AuthedRequest, res) => {
   if (!req.account) return res.json({ account: null });
   const account = await refreshFromStripe(req.account);
-  res.json({ account: toAccountResponse(account, req.accountRole ?? null) });
+  res.json({ account: await toAccountResponse(account, req.accountRole ?? null) });
 });
 
 // Opens the Stripe customer portal: change plan or volume, update the card,

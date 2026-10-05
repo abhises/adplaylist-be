@@ -4,14 +4,13 @@ import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
-import { setPlanPrice } from "../lib/catalog.js";
+import { getPriceTable, setPlanPrice } from "../lib/catalog.js";
 import { isValidVolume } from "../lib/plans.js";
 import { toPlansResponse } from "./plans.js";
 import {
   createUserSchema,
   idParamSchema,
-  planPriceParamsSchema,
-  planPriceSchema,
+  planPricesSchema,
   updateUserDetailsSchema,
   updateUserRoleSchema,
 } from "../validation/schemas.js";
@@ -155,27 +154,66 @@ router.delete(
   }
 );
 
-// Changes one plan's price. New signups and plan changes pay it straight
-// away; existing subscribers keep the price they're on.
-router.put(
-  "/plan-prices/:plan/:volume",
-  validateParams(planPriceParamsSchema),
-  validateBody(planPriceSchema),
-  async (req: AuthedRequest, res) => {
-    const plan = req.params.plan as Parameters<typeof setPlanPrice>[0];
-    const volume = Number(req.params.volume);
-    if (!isValidVolume(plan, volume)) {
-      return res.status(404).json({ error: "That plan doesn't have this credit volume." });
-    }
-    const { monthly, yearly } = req.body;
-    const table = await setPlanPrice(
-      plan,
-      volume,
-      { monthly: Math.round(monthly * 100), yearly: Math.round(yearly * 100) },
-      req.userId!
-    );
-    res.json({ plans: toPlansResponse(table) });
+// Saves every edited price in one go. Each goes through Stripe in turn; if
+// one fails, the ones before it stay saved and the error says which failed.
+router.put("/plan-prices", validateBody(planPricesSchema), async (req: AuthedRequest, res) => {
+  const changes: { plan: string; volume: number; monthly: number; yearly: number; credits: number }[] =
+    req.body.changes;
+  type Plan = Parameters<typeof setPlanPrice>[0];
+  const bad = changes.find((c) => !isValidVolume(c.plan as Plan, c.volume));
+  if (bad) {
+    return res.status(404).json({ error: `${bad.plan} doesn't have a ${bad.volume} credit volume.` });
   }
-);
+  let saved = 0;
+  for (const c of changes) {
+    try {
+      await setPlanPrice(
+        c.plan as Plan,
+        c.volume,
+        { monthly: Math.round(c.monthly * 100), yearly: Math.round(c.yearly * 100), credits: c.credits },
+        req.userId!
+      );
+      saved++;
+    } catch (err) {
+      console.error("Price change failed:", err);
+      const what = `${c.plan}${c.volume ? ` ${c.volume}` : ""}`;
+      return res.status(502).json({
+        error: `Saved ${saved} of ${changes.length}; ${what} failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        plans: toPlansResponse(await getPriceTable()),
+      });
+    }
+  }
+  res.json({ plans: toPlansResponse(await getPriceTable()) });
+});
+
+// Every price each plan + volume has had, newest first, with who set it.
+router.get("/plan-prices/history", async (_req, res) => {
+  const rows = await prisma.planPriceChange.findMany({
+    orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+    take: 500,
+  });
+  const adminIds = [...new Set(rows.map((r) => r.changedById).filter((id): id is number => id !== null))];
+  const admins = await prisma.user.findMany({
+    where: { id: { in: adminIds } },
+    select: { id: true, fullName: true },
+  });
+  const nameOf = new Map(admins.map((a) => [a.id, a.fullName]));
+  const dollars = (cents: number | null) => (cents === null ? null : cents / 100);
+  res.json({
+    history: rows.map((r) => ({
+      id: r.id,
+      plan: r.plan,
+      volume: r.volume,
+      oldMonthly: dollars(r.oldMonthlyCents),
+      oldYearly: dollars(r.oldYearlyCents),
+      monthly: r.monthlyCents / 100,
+      yearly: r.yearlyCents / 100,
+      oldCredits: r.oldCredits,
+      credits: r.credits,
+      changedBy: r.changedById ? (nameOf.get(r.changedById) ?? null) : null,
+      changedAt: r.changedAt.toISOString(),
+    })),
+  });
+});
 
 export default router;

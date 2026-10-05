@@ -8,7 +8,7 @@ import { updateProfileSchema } from "../validation/schemas.js";
 
 const router = Router();
 
-export function toUserResponse(user: User, account: Account | null = null) {
+export async function toUserResponse(user: User, account: Account | null = null) {
   return {
     id: user.id,
     email: user.email,
@@ -29,7 +29,7 @@ export function toUserResponse(user: User, account: Account | null = null) {
       brand: user.prefBrand,
       newsletter: user.prefNewsletter,
     },
-    account: account ? toAccountResponse(account, user.accountRole) : null,
+    account: account ? await toAccountResponse(account, user.accountRole) : null,
   };
 }
 

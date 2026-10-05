@@ -8,72 +8,72 @@ datasource db {
 }
 
 model Ad {
-  id                  Int               @id @default(autoincrement())
-  slug                String            @unique(map: "slug") @db.VarChar(150)
-  title               String            @db.VarChar(255)
-  format              String            @db.VarChar(100)
-  variant             String            @db.VarChar(20)
-  eyebrow             String?           @db.VarChar(100)
-  headline            String            @db.VarChar(255)
-  sub                 String?           @db.VarChar(255)
-  cta                 String?           @db.VarChar(100)
-  badge               String?           @db.VarChar(100)
-  description         String?           @db.Text
-  brandName           String?           @map("brand_name") @db.VarChar(255)
-  primaryText         String?           @map("primary_text") @db.Text
-  creativeDescription String?           @map("creative_description") @db.Text
-  tags                String?           @db.Text
-  mediaType           String            @map("media_type") @db.VarChar(10)
-  swatch              String            @db.VarChar(255)
-  light               Boolean           @default(false)
-  category            String            @db.VarChar(100)
-  market              String            @db.VarChar(50)
-  language            String            @default("English (EN)") @db.VarChar(50)
-  photoUrl            String?           @map("photo_url") @db.VarChar(500)
+  id                  Int      @id @default(autoincrement())
+  slug                String   @unique(map: "slug") @db.VarChar(150)
+  title               String   @db.VarChar(255)
+  format              String   @db.VarChar(100)
+  variant             String   @db.VarChar(20)
+  eyebrow             String?  @db.VarChar(100)
+  headline            String   @db.VarChar(255)
+  sub                 String?  @db.VarChar(255)
+  cta                 String?  @db.VarChar(100)
+  badge               String?  @db.VarChar(100)
+  description         String?  @db.Text
+  brandName           String?  @map("brand_name") @db.VarChar(255)
+  primaryText         String?  @map("primary_text") @db.Text
+  creativeDescription String?  @map("creative_description") @db.Text
+  tags                String?  @db.Text
+  mediaType           String   @map("media_type") @db.VarChar(10)
+  swatch              String   @db.VarChar(255)
+  light               Boolean  @default(false)
+  category            String   @db.VarChar(100)
+  market              String   @db.VarChar(50)
+  language            String   @default("English (EN)") @db.VarChar(50)
+  photoUrl            String?  @map("photo_url") @db.VarChar(500)
   // A copy of photoUrl with the ADPLAYLIST watermark baked in: what unpaid
   // users get from Download (pages and paid downloads use the clean
   // photoUrl). Made on first need; null until then or after a new upload.
-  watermarkedPhotoUrl String?           @map("watermarked_photo_url") @db.VarChar(500)
-  platforms           String            @db.VarChar(255)
-  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
-  editable            Boolean           @default(false)
-  dominantColor       String?           @map("dominant_color") @db.VarChar(30)
-  videoLength         String?           @map("video_length") @db.VarChar(20)
-  canvaUrl            String?           @map("canva_url") @db.VarChar(500)
+  watermarkedPhotoUrl String?  @map("watermarked_photo_url") @db.VarChar(500)
+  platforms           String   @db.VarChar(255)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  editable            Boolean  @default(false)
+  dominantColor       String?  @map("dominant_color") @db.VarChar(30)
+  videoLength         String?  @map("video_length") @db.VarChar(20)
+  canvaUrl            String?  @map("canva_url") @db.VarChar(500)
   // Picked by an admin to show on the landing page: `featured` in the
   // library section, `showInHero` in the hero's product panel.
-  featured            Boolean           @default(false)
-  showInHero          Boolean           @default(false) @map("show_in_hero")
+  featured            Boolean  @default(false)
+  showInHero          Boolean  @default(false) @map("show_in_hero")
 
   // SEO page fields, filled from the ad's CSV (see the "Adplaylist File"
   // template). All optional: older ads fall back to generated values.
-  subcategory         String?           @db.VarChar(100)
+  subcategory     String?   @db.VarChar(100)
   // The creative style (Testimonial, UGC…). Not `format`, which holds the
   // placement size.
-  adFormat            String?           @map("ad_format") @db.VarChar(50)
-  onImageText         String?           @map("on_image_text") @db.Text
-  seoTitle            String?           @map("seo_title") @db.VarChar(255)
-  metaDescription     String?           @map("meta_description") @db.VarChar(500)
-  pageHeadline        String?           @map("page_headline") @db.VarChar(255)
-  introParagraph      String?           @map("intro_paragraph") @db.Text
-  imageFileName       String?           @map("image_file_name") @db.VarChar(255)
-  imageAlt            String?           @map("image_alt") @db.VarChar(255)
-  imageCaption        String?           @map("image_caption") @db.VarChar(500)
+  adFormat        String?   @map("ad_format") @db.VarChar(50)
+  onImageText     String?   @map("on_image_text") @db.Text
+  seoTitle        String?   @map("seo_title") @db.VarChar(255)
+  metaDescription String?   @map("meta_description") @db.VarChar(500)
+  pageHeadline    String?   @map("page_headline") @db.VarChar(255)
+  introParagraph  String?   @map("intro_paragraph") @db.Text
+  imageFileName   String?   @map("image_file_name") @db.VarChar(255)
+  imageAlt        String?   @map("image_alt") @db.VarChar(255)
+  imageCaption    String?   @map("image_caption") @db.VarChar(500)
   // The long-form editorial sections (takeaways, why it works, breakdown,
   // headline ideas, linking lists). Shape: AdContent in lib/adContent.ts.
-  content             Json?
-  authorId            Int?              @map("author_id")
-  reviewerId          Int?              @map("reviewer_id")
-  author              Author?           @relation("AdAuthor", fields: [authorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_author")
-  reviewer            Author?           @relation("AdReviewer", fields: [reviewerId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_reviewer")
+  content         Json?
+  authorId        Int?      @map("author_id")
+  reviewerId      Int?      @map("reviewer_id")
+  author          Author?   @relation("AdAuthor", fields: [authorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_author")
+  reviewer        Author?   @relation("AdReviewer", fields: [reviewerId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_ads_reviewer")
   // Shown on the page as "Added" / "Updated". dateAdded falls back to
   // createdAt for ads published before these existed.
-  dateAdded           DateTime?         @map("date_added") @db.Date
-  dateUpdated         DateTime?         @map("date_updated") @db.Date
+  dateAdded       DateTime? @map("date_added") @db.Date
+  dateUpdated     DateTime? @map("date_updated") @db.Date
 
-  creativeRequests    CreativeRequest[]
-  savedAds            SavedAd[]
-  oldSlugs            AdSlugRedirect[]
+  creativeRequests CreativeRequest[]
+  savedAds         SavedAd[]
+  oldSlugs         AdSlugRedirect[]
 
   @@index([authorId], map: "fk_ads_author")
   @@index([reviewerId], map: "fk_ads_reviewer")
@@ -326,11 +326,36 @@ model PlanPrice {
   volume       Int
   monthlyCents Int      @map("monthly_cents")
   yearlyCents  Int      @map("yearly_cents")
+  // Credits a month this tier gives. Starts equal to `volume`, which stays
+  // the tier's fixed id (Stripe product, accounts' creditVolume); admins can
+  // change the credits without moving anyone to another tier.
+  credits      Int
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
   updatedById  Int?     @map("updated_by_id")
 
   @@id([plan, volume])
   @@map("plan_prices")
+}
+
+// Every price a plan + credit volume has had: a row per change, so admins can
+// see what it cost and from when to when. A price is in effect from its
+// changedAt until the next row for the same plan + volume.
+model PlanPriceChange {
+  id              Int      @id @default(autoincrement())
+  plan            String   @db.VarChar(20)
+  volume          Int
+  // Null on each plan's starting price, recorded when history began.
+  oldMonthlyCents Int?     @map("old_monthly_cents")
+  oldYearlyCents  Int?     @map("old_yearly_cents")
+  monthlyCents    Int      @map("monthly_cents")
+  yearlyCents     Int      @map("yearly_cents")
+  oldCredits      Int?     @map("old_credits")
+  credits         Int
+  changedById     Int?     @map("changed_by_id")
+  changedAt       DateTime @default(now()) @map("changed_at") @db.Timestamp(0)
+
+  @@index([plan, volume, changedAt])
+  @@map("plan_price_changes")
 }
 
 // An enquiry from the landing page's "Talk to us" form (custom volume,
@@ -368,4 +393,3 @@ model ContactReply {
   @@index([sentById], map: "fk_contact_replies_user")
   @@map("contact_replies")
 }
-
