@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
 import { prisma } from "./prisma.js";
-import { supabase, UPLOADS_BUCKET } from "./supabase.js";
+import { uploadFile } from "./storage.js";
 
 // Unpaid users' downloads get a copy of the creative with a faint repeating
 // "ADPLAYLIST" mark baked into the file. Pages, staff and paid plans get the
@@ -76,11 +76,7 @@ export async function publishWatermarked(input: Buffer, fileName: string) {
   const { buffer, ext, type } = await watermarkImage(input);
   const base = slug(path.basename(fileName, path.extname(fileName))) || "ad-creative";
   const key = `ads/${crypto.randomBytes(4).toString("hex")}/${base}${ext}`;
-  const { error } = await supabase.storage
-    .from(UPLOADS_BUCKET)
-    .upload(key, buffer, { contentType: type, cacheControl: "31536000" });
-  if (error) throw error;
-  return supabase.storage.from(UPLOADS_BUCKET).getPublicUrl(key).data.publicUrl;
+  return uploadFile(key, buffer, type);
 }
 
 // The ad's watermarked copy, made and saved on first need. Null when the ad

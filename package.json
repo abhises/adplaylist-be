@@ -13,11 +13,14 @@
     "stripe:setup": "tsx src/scripts/stripeSetup.ts",
     "ads:watermark": "tsx src/scripts/watermarkAds.ts",
     "storage:backup": "tsx src/scripts/backupStorage.ts",
-    "storage:restore": "tsx src/scripts/restoreStorage.ts"
+    "storage:restore": "tsx src/scripts/restoreStorage.ts",
+    "storage:move-urls": "tsx src/scripts/storageMoveUrls.ts"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "@prisma/adapter-mariadb": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@supabase/supabase-js": "^2.116.0",

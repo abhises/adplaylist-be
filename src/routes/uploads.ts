@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { uploadSignSchema } from "../validation/schemas.js";
-import { supabase, UPLOADS_BUCKET } from "../lib/supabase.js";
+import { signUpload, uploadFile } from "../lib/storage.js";
 
 // Shared by the Add-ad creative upload (images only, capped tighter
 // client-side) and the Requests page's brief attachment (images, PDF, ZIP).
@@ -31,8 +31,8 @@ const router = Router();
 // original PHP hosting) corrupts multipart/form-data bodies in transit —
 // verified by comparing a direct-to-localhost upload (succeeds) against the
 // same request through the public domain (fails with "Unexpected end of
-// form" regardless of file size). Browsers upload straight to Supabase
-// instead, using a short-lived signed URL issued here, so the file bytes
+// form" regardless of file size). Browsers upload straight to storage (S3 or
+// Supabase) instead, using a short-lived signed URL issued here, so the file bytes
 // never pass through that proxy.
 router.post(
   "/sign",
@@ -47,25 +47,13 @@ router.post(
     const ext = path.extname(filename).toLowerCase();
     const key = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
 
-    const { data, error } = await supabase.storage
-      .from(UPLOADS_BUCKET)
-      .createSignedUploadUrl(key);
-
-    if (error || !data) {
-      console.error("Failed to create signed upload URL:", error);
+    try {
+      const { signedUrl, url } = await signUpload(key, contentType);
+      res.status(201).json({ path: key, signedUrl, url });
+    } catch (err) {
+      console.error("Failed to create signed upload URL:", err);
       return res.status(500).json({ error: "Could not prepare upload" });
     }
-
-    const { data: publicUrlData } = supabase.storage
-      .from(UPLOADS_BUCKET)
-      .getPublicUrl(key);
-
-    res.status(201).json({
-      path: key,
-      token: data.token,
-      signedUrl: data.signedUrl,
-      url: publicUrlData.publicUrl,
-    });
   }
 );
 
@@ -89,22 +77,16 @@ router.post(
     const ext = path.extname(req.file.originalname).toLowerCase();
     const key = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from(UPLOADS_BUCKET)
-      .upload(key, req.file.buffer, {
-        contentType: req.file.mimetype,
-        cacheControl: "31536000",
-      });
-
-    if (uploadError) {
-      console.error("Supabase upload failed:", uploadError);
+    let url: string;
+    try {
+      url = await uploadFile(key, req.file.buffer, req.file.mimetype);
+    } catch (err) {
+      console.error("Upload failed:", err);
       return res.status(500).json({ error: "Upload failed" });
     }
 
-    const { data } = supabase.storage.from(UPLOADS_BUCKET).getPublicUrl(key);
-
     res.status(201).json({
-      url: data.publicUrl,
+      url,
       width: req.body.width ? Number(req.body.width) : undefined,
       height: req.body.height ? Number(req.body.height) : undefined,
     });

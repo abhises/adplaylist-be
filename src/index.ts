@@ -25,7 +25,7 @@ import billingRoutes, { webhookHandler as stripeWebhook } from "./routes/billing
 import plansRoutes from "./routes/plans.js";
 import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
-import { ensureUploadsBucket } from "./lib/supabase.js";
+import { ensureStorage, STORAGE_DRIVER } from "./lib/storage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -123,9 +123,9 @@ app.listen(PORT, async () => {
     console.error("Failed to connect to MySQL database after retries:", err);
   }
   try {
-    await ensureUploadsBucket();
-    console.log(`Supabase storage bucket ready`);
+    await ensureStorage();
+    console.log(`Storage ready (${STORAGE_DRIVER})`);
   } catch (err) {
-    console.error("Failed to set up Supabase storage bucket:", err);
+    console.error(`Failed to set up storage (${STORAGE_DRIVER}):`, err);
   }
 });
