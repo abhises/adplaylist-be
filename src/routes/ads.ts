@@ -181,6 +181,20 @@ router.delete(
   }
 );
 
+// The landing hero's product panel has a tab each for these platforms, with
+// up to HERO_PER_PLATFORM picked ads per tab. Matches the frontend's
+// lib/ads.ts.
+const HERO_PLATFORMS = ["META", "Google", "LinkedIn"];
+const HERO_PER_PLATFORM = 6;
+
+// The hero platforms in a stored comma-separated platforms list.
+function heroPlatformsOf(platforms: string | null) {
+  const lower = (platforms ?? "").split(",").map((p) => p.trim().toLowerCase());
+  return HERO_PLATFORMS.filter((p) => lower.includes(p.toLowerCase()));
+}
+
+const platformName = (p: string) => (p === "META" ? "Meta" : p);
+
 // Admins pick which ads the landing page shows: `featured` for the library
 // section, `showInHero` for the hero panel. Kept separate from PUT so
 // toggling them doesn't resend (and revalidate) the whole ad.
@@ -206,6 +220,29 @@ router.patch(
       where: { slug: String(req.params.slug) },
     });
     if (!ad) return res.status(404).json({ error: "Ad not found" });
+
+    // Adding to the hero: the ad must run on a hero platform, and each of
+    // its hero platforms must have room. An ad on several counts toward each.
+    if (data.showInHero && !ad.showInHero) {
+      const own = heroPlatformsOf(ad.platforms);
+      if (own.length === 0) {
+        return res.status(400).json({
+          error: "Only Meta, Google and LinkedIn ads can go in the hero panel",
+        });
+      }
+      const picked = await prisma.ad.findMany({
+        where: { showInHero: true },
+        select: { platforms: true },
+      });
+      for (const p of own) {
+        const count = picked.filter((a) => heroPlatformsOf(a.platforms).includes(p)).length;
+        if (count >= HERO_PER_PLATFORM) {
+          return res.status(400).json({
+            error: `The hero panel already has ${HERO_PER_PLATFORM} ${platformName(p)} ads`,
+          });
+        }
+      }
+    }
 
     const updated = await prisma.ad.update({
       where: { id: ad.id },
