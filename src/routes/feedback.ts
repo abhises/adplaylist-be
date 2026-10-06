@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { notifyAdmins } from "../lib/realtime.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
@@ -49,6 +50,20 @@ router.post(
       },
     });
     res.status(201).json({ feedback: toFeedbackResponse(created) });
+
+    // After answering, so it can't fail the request.
+    prisma.user
+      .findUnique({ where: { id: req.userId! }, select: { fullName: true } })
+      .then((sender) =>
+        notifyAdmins({
+          type: "feedback.created",
+          title: `New feedback from ${sender?.fullName ?? email ?? "a user"}`,
+          body: message.length > 200 ? `${message.slice(0, 200)}…` : message,
+          link: "/admin/feedback",
+          actorId: req.userId,
+        })
+      )
+      .catch((err) => console.error("Failed to announce feedback:", err));
   }
 );
 

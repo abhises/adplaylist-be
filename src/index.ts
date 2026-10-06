@@ -23,9 +23,11 @@ import authorsRoutes from "./routes/authors.js";
 import contactRoutes from "./routes/contact.js";
 import billingRoutes, { webhookHandler as stripeWebhook } from "./routes/billing.js";
 import plansRoutes from "./routes/plans.js";
+import notificationsRoutes from "./routes/notifications.js";
 import { Prisma } from "./generated/prisma/client.js";
 import { prisma, waitForDatabase } from "./lib/prisma.js";
 import { ensureStorage, STORAGE_DRIVER } from "./lib/storage.js";
+import { initRealtime } from "./lib/realtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -74,6 +76,7 @@ app.use("/api/authors", authorsRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/plans", plansRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 // Database errors caused by what the client sent get a real status and a
 // message they can act on; anything else stays a generic 500.
@@ -113,7 +116,7 @@ app.use(
   }
 );
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   try {
     await waitForDatabase();
@@ -129,3 +132,6 @@ app.listen(PORT, async () => {
     console.error(`Failed to set up storage (${STORAGE_DRIVER}):`, err);
   }
 });
+
+// Live staff notifications share the API's port.
+initRealtime(server, corsOrigins);

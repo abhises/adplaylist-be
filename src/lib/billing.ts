@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import type { Account, Prisma, User } from "../generated/prisma/client.js";
+import { notifyAdmins } from "./realtime.js";
 import { prisma } from "./prisma.js";
 import { tierCredits } from "./catalog.js";
 import {
@@ -465,7 +466,7 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const monthly = await tierCredits(account.plan, account.creditVolume);
   // Conditional on the invoice id so two deliveries racing each other can't
   // both refill.
-  await prisma.$transaction(async (tx) => {
+  const refilled = await prisma.$transaction(async (tx) => {
     const { count } = await tx.account.updateMany({
       where: {
         id: account.id,
@@ -494,7 +495,23 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
           : { reason: "refill", note: `Monthly credits · ${label}`, invoiceId: invoice.id }
       );
     }
+    return count === 1;
   });
+
+  // Once per invoice, like the refill above.
+  if (refilled) {
+    const amount = new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: invoice.currency.toUpperCase(),
+    }).format(invoice.amount_paid / 100);
+    const kind = isUpgrade ? "Upgrade" : isRenewal ? "Renewal" : "New subscription";
+    void notifyAdmins({
+      type: "payment.received",
+      title: `Payment received: ${amount} from ${account.name}`,
+      body: `${kind} · ${planLabel(account.plan, monthly)} · ${account.billingCycle}`,
+      link: "/admin",
+    });
+  }
 }
 
 // Pulls the account's current subscription and latest invoice straight from

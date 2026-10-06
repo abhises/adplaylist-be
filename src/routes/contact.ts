@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { ContactEnquiry, ContactReply, User } from "../generated/prisma/client.js";
+import { notifyAdmins } from "../lib/realtime.js";
 import { prisma } from "../lib/prisma.js";
 import { MailError, mailConfigured, sendMail } from "../lib/mailer.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
@@ -89,6 +90,13 @@ router.post("/", validateBody(contactSchema), async (req, res) => {
     },
   });
   res.status(201).json({ ok: true });
+
+  void notifyAdmins({
+    type: "contact.created",
+    title: `New enquiry from ${name}${company ? ` (${company})` : ""}`,
+    body: message.length > 200 ? `${message.slice(0, 200)}…` : message,
+    link: "/admin/contact",
+  });
 
   // After answering: a slow or failing mail server mustn't hold up or fail
   // the visitor's request. The enquiry is saved either way.

@@ -17,16 +17,28 @@ import {
   idParamSchema,
 } from "../validation/schemas.js";
 import { toAdResponse } from "./ads.js";
-import type { Ad, CreativeRequest, User } from "../generated/prisma/client.js";
+import { broadcastRequest, notifyStaff, notifyUser } from "../lib/realtime.js";
+import type { Account, Ad, CreativeRequest, User } from "../generated/prisma/client.js";
 
 const router = Router();
 
 const CANVA_EDIT = "Canva edit";
 
+// Loads what staff need to see who sent a request: the person and the
+// company account they belong to.
+const withRequester = {
+  ad: true,
+  user: { include: { account: true } },
+} as const;
+
+type Requester = Pick<User, "id" | "fullName" | "email" | "role" | "accountRole"> & {
+  account?: Pick<Account, "name" | "plan" | "status"> | null;
+};
+
 function toRequestResponse(
   request: CreativeRequest,
   ad?: Ad | null,
-  requester?: Pick<User, "fullName" | "email"> | null
+  requester?: Requester | null
 ) {
   return {
     id: request.id,
@@ -41,10 +53,49 @@ function toRequestResponse(
     attachmentName: request.attachmentName ?? undefined,
     ad: ad ? toAdResponse(ad, { full: false }) : undefined,
     requester: requester
-      ? { fullName: requester.fullName, email: requester.email }
+      ? {
+          id: requester.id,
+          fullName: requester.fullName,
+          email: requester.email,
+          role: requester.role,
+          accountRole: requester.accountRole ?? undefined,
+          company: requester.account
+            ? {
+                name: requester.account.name,
+                plan: requester.account.plan,
+                status: requester.account.status,
+              }
+            : undefined,
+        }
       : undefined,
     createdAt: request.createdAt,
   };
+}
+
+// Puts a just-created request in the staff inbox and live queue, saying who
+// sent it and from which company. The request is already saved, so a failure
+// here is logged rather than failing it.
+async function announceNewRequest(id: number) {
+  try {
+    const request = await prisma.creativeRequest.findUnique({
+      where: { id },
+      include: withRequester,
+    });
+    if (!request) return;
+    const { user } = request;
+    const from = user.account ? `${user.fullName} (${user.account.name})` : user.fullName;
+    await notifyStaff({
+      type: "request.created",
+      title: `${request.type === CANVA_EDIT ? "Canva edit request" : "New request"} from ${from}`,
+      body: request.title,
+      link: `/admin/requests?request=${request.id}`,
+      requestId: request.id,
+      actorId: user.id,
+    });
+    broadcastRequest(toRequestResponse(request, request.ad, request.user));
+  } catch (err) {
+    console.error(`Failed to announce request ${id}:`, err);
+  }
 }
 
 router.get("/", requireAuth, async (req: AuthedRequest, res) => {
@@ -68,7 +119,7 @@ router.get(
   requireRole("designer", "admin"),
   async (_req: AuthedRequest, res) => {
     const requests = await prisma.creativeRequest.findMany({
-      include: { ad: true, user: true },
+      include: withRequester,
       orderBy: { createdAt: "desc" },
     });
 
@@ -131,6 +182,7 @@ router.post(
       });
     }
 
+    await announceNewRequest(created.id);
     res.status(201).json({ request: toRequestResponse(created) });
   }
 );
@@ -202,6 +254,7 @@ router.post(
       });
     }
 
+    await announceNewRequest(created.id);
     res.status(201).json({ request: toRequestResponse(created, ad), alreadyRequested: false });
   }
 );
@@ -231,10 +284,23 @@ router.post(
 
     const updated = await prisma.creativeRequest.findUnique({
       where: { id: Number(req.params.id) },
+      include: withRequester,
     });
     if (!updated)
       return res.status(500).json({ error: "Failed to update request" });
-    res.json({ request: toRequestResponse(updated, ad) });
+    const response = toRequestResponse(updated, updated.ad, updated.user);
+    broadcastRequest(response);
+    if (updated.userId !== req.userId) {
+      await notifyUser(updated.userId, {
+        type: "request.delivered",
+        title: "Your request was delivered",
+        body: updated.title,
+        link: "/requests?tab=Delivered",
+        requestId: updated.id,
+        actorId: req.userId,
+      });
+    }
+    res.json({ request: response });
   }
 );
 
@@ -263,10 +329,23 @@ router.post(
 
     const updated = await prisma.creativeRequest.findUnique({
       where: { id: Number(req.params.id) },
+      include: withRequester,
     });
     if (!updated)
       return res.status(500).json({ error: "Failed to update request" });
-    res.json({ request: toRequestResponse(updated) });
+    const response = toRequestResponse(updated, updated.ad, updated.user);
+    broadcastRequest(response);
+    if (updated.userId !== req.userId) {
+      await notifyUser(updated.userId, {
+        type: "request.declined",
+        title: "Your request was declined",
+        body: `${updated.title}: ${reason}`,
+        link: "/requests?tab=Declined",
+        requestId: updated.id,
+        actorId: req.userId,
+      });
+    }
+    res.json({ request: response });
   }
 );
 

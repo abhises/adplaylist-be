@@ -136,6 +136,7 @@ model CreativeRequest {
   account        Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
   ad             Ad?       @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
+  notifications  Notification[]
 
   @@index([adId], map: "fk_requests_ad")
   @@index([userId], map: "fk_requests_user")
@@ -184,6 +185,9 @@ model User {
   savedAds            SavedAd[]
   feedback            Feedback[]
   contactReplies      ContactReply[]
+  notifications       Notification[]     @relation("NotificationActor")
+  notificationsToMe   Notification[]     @relation("NotificationRecipient")
+  notificationReads   NotificationRead[]
 
   @@index([accountId], map: "fk_users_account")
   @@map("users")
@@ -393,4 +397,50 @@ model ContactReply {
   @@index([enquiryId], map: "fk_contact_replies_enquiry")
   @@index([sentById], map: "fk_contact_replies_user")
   @@map("contact_replies")
+}
+
+// Everyone's notifications, shown under the bell. Each one goes to an
+// audience: "staff" (designers and admins), "admin" (admins only), or "user"
+// (just recipientId, e.g. a customer whose request was delivered). Each
+// person has their own read status (NotificationRead). New rows are also
+// pushed live over Socket.IO.
+model Notification {
+  id          Int                @id @default(autoincrement())
+  // staff | admin | user
+  audience    String             @db.VarChar(10)
+  recipientId Int?               @map("recipient_id")
+  // request.created | request.delivered | request.declined | contact.created
+  // | feedback.created | user.signup | payment.received
+  type        String             @db.VarChar(40)
+  title       String             @db.VarChar(255)
+  body        String?            @db.Text
+  // The page it opens, e.g. /admin/requests?request=12.
+  link        String?            @db.VarChar(500)
+  requestId   Int?               @map("request_id")
+  // Who caused it, e.g. the customer who sent the request.
+  actorId     Int?               @map("actor_id")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamp(0)
+  request     CreativeRequest?   @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_request")
+  actor       User?              @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_notifications_actor")
+  recipient   User?              @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_recipient")
+  reads       NotificationRead[]
+
+  @@index([audience, createdAt], map: "notifications_audience_created")
+  @@index([recipientId], map: "fk_notifications_recipient")
+  @@index([requestId], map: "fk_notifications_request")
+  @@index([actorId], map: "fk_notifications_actor")
+  @@map("notifications")
+}
+
+// Who has read which notification. No row means unread for that person.
+model NotificationRead {
+  notificationId Int          @map("notification_id")
+  userId         Int          @map("user_id")
+  readAt         DateTime     @default(now()) @map("read_at") @db.Timestamp(0)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_reads_notification")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_reads_user")
+
+  @@id([notificationId, userId])
+  @@index([userId], map: "fk_notification_reads_user")
+  @@map("notification_reads")
 }

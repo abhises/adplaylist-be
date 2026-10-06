@@ -8,7 +8,19 @@ import { googleAuthSchema, loginSchema, registerSchema } from "../validation/sch
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
 import { sendWelcomeEmail } from "../lib/mailer.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
+import { notifyAdmins } from "../lib/realtime.js";
 import { userResponseFor } from "./profile.js";
+
+// Tells admins someone new signed up.
+function announceSignup(user: { id: number; fullName: string; email: string; role: string }, via: string) {
+  void notifyAdmins({
+    type: "user.signup",
+    title: `New sign-up: ${user.fullName}${user.role === "client" ? "" : ` (${user.role})`}`,
+    body: `${user.email} · ${via}`,
+    link: "/admin",
+    actorId: user.id,
+  });
+}
 
 // Every new customer owns a fresh account that starts a 7-day Starter trial;
 // choosing a paid plan (with a card) happens on the billing page. Staff
@@ -59,6 +71,7 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
   if (role === "client") sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
+  announceSignup(user, "email");
 
   res.status(201).json({ token, user: await userResponseFor(user.id) });
 });
@@ -128,7 +141,10 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
-  if (isNewUser) sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
+  if (isNewUser) {
+    sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
+    announceSignup(user, "Google");
+  }
 
   res.json({ token, user: await userResponseFor(user.id) });
 });
