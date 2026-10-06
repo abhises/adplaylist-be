@@ -68,6 +68,8 @@ function toRequestResponse(
             : undefined,
         }
       : undefined,
+    // Whether a credit paid for it (declining refunds it).
+    creditCharged: request.creditCharged,
     createdAt: request.createdAt,
   };
 }
