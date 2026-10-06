@@ -41,9 +41,10 @@ model Ad {
   videoLength         String?  @map("video_length") @db.VarChar(20)
   canvaUrl            String?  @map("canva_url") @db.VarChar(500)
   // Picked by an admin to show on the landing page: `featured` in the
-  // library section, `showInHero` in the hero's product panel.
+  // library section; `heroPlatforms` lists the hero panel tabs it was picked
+  // for (comma-separated, e.g. "META,Google"; empty when not in the hero).
   featured            Boolean  @default(false)
-  showInHero          Boolean  @default(false) @map("show_in_hero")
+  heroPlatforms       String   @default("") @map("hero_platforms") @db.VarChar(100)
 
   // SEO page fields, filled from the ad's CSV (see the "Adplaylist File"
   // template). All optional: older ads fall back to generated values.

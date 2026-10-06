@@ -58,7 +58,7 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     dominantColor: ad.dominantColor ?? undefined,
     videoLength: ad.videoLength ?? undefined,
     featured: ad.featured,
-    showInHero: ad.showInHero,
+    heroPlatforms: splitList(ad.heroPlatforms),
     createdAt: ad.createdAt,
     subcategory: ad.subcategory ?? undefined,
     adFormat: ad.adFormat ?? undefined,
@@ -181,36 +181,41 @@ router.delete(
   }
 );
 
-// The landing hero's product panel has a tab each for these platforms, with
-// up to HERO_PER_PLATFORM picked ads per tab. Matches the frontend's
-// lib/ads.ts.
+// The landing hero's product panel has a tab each for these platforms. An
+// admin picks any ads for each tab, up to HERO_PER_PLATFORM per tab; the same
+// ad can be in several. Matches the frontend's lib/ads.ts.
 const HERO_PLATFORMS = ["META", "Google", "LinkedIn"];
 const HERO_PER_PLATFORM = 6;
 
-// The hero platforms in a stored comma-separated platforms list.
-function heroPlatformsOf(platforms: string | null) {
-  const lower = (platforms ?? "").split(",").map((p) => p.trim().toLowerCase());
-  return HERO_PLATFORMS.filter((p) => lower.includes(p.toLowerCase()));
-}
-
+const splitList = (value: string) => (value ? value.split(",") : []);
 const platformName = (p: string) => (p === "META" ? "Meta" : p);
 
 // Admins pick which ads the landing page shows: `featured` for the library
-// section, `showInHero` for the hero panel. Kept separate from PUT so
-// toggling them doesn't resend (and revalidate) the whole ad.
+// section, `heroPlatforms` (the hero tabs it's in) for the hero panel. Kept
+// separate from PUT so toggling them doesn't resend (and revalidate) the
+// whole ad.
 router.patch(
   "/:slug/home-section",
   requireAuth,
   requireRole("admin"),
   async (req, res) => {
-    const data: { featured?: boolean; showInHero?: boolean } = {};
-    for (const key of ["featured", "showInHero"] as const) {
-      const value = req.body?.[key];
-      if (value === undefined) continue;
-      if (typeof value !== "boolean") {
-        return res.status(400).json({ error: `${key} must be true or false` });
+    const data: { featured?: boolean; heroPlatforms?: string } = {};
+    const featured = req.body?.featured;
+    if (featured !== undefined) {
+      if (typeof featured !== "boolean") {
+        return res.status(400).json({ error: "featured must be true or false" });
       }
-      data[key] = value;
+      data.featured = featured;
+    }
+    const hero = req.body?.heroPlatforms;
+    if (hero !== undefined) {
+      if (!Array.isArray(hero) || hero.some((p) => !HERO_PLATFORMS.includes(p))) {
+        return res.status(400).json({
+          error: `heroPlatforms must be a list of ${HERO_PLATFORMS.join(", ")}`,
+        });
+      }
+      // Stored in HERO_PLATFORMS order, without repeats.
+      data.heroPlatforms = HERO_PLATFORMS.filter((p) => hero.includes(p)).join(",");
     }
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "Nothing to update" });
@@ -221,25 +226,22 @@ router.patch(
     });
     if (!ad) return res.status(404).json({ error: "Ad not found" });
 
-    // Adding to the hero: the ad must run on a hero platform, and each of
-    // its hero platforms must have room. An ad on several counts toward each.
-    if (data.showInHero && !ad.showInHero) {
-      const own = heroPlatformsOf(ad.platforms);
-      if (own.length === 0) {
-        return res.status(400).json({
-          error: "Only Meta, Google and LinkedIn ads can go in the hero panel",
+    // Each hero tab the ad is being added to must have room.
+    if (data.heroPlatforms !== undefined) {
+      const current = splitList(ad.heroPlatforms);
+      const added = splitList(data.heroPlatforms).filter((p) => !current.includes(p));
+      if (added.length > 0) {
+        const others = await prisma.ad.findMany({
+          where: { heroPlatforms: { not: "" }, id: { not: ad.id } },
+          select: { heroPlatforms: true },
         });
-      }
-      const picked = await prisma.ad.findMany({
-        where: { showInHero: true },
-        select: { platforms: true },
-      });
-      for (const p of own) {
-        const count = picked.filter((a) => heroPlatformsOf(a.platforms).includes(p)).length;
-        if (count >= HERO_PER_PLATFORM) {
-          return res.status(400).json({
-            error: `The hero panel already has ${HERO_PER_PLATFORM} ${platformName(p)} ads`,
-          });
+        for (const p of added) {
+          const count = others.filter((a) => splitList(a.heroPlatforms).includes(p)).length;
+          if (count >= HERO_PER_PLATFORM) {
+            return res.status(400).json({
+              error: `The hero panel's ${platformName(p)} tab already has ${HERO_PER_PLATFORM} ads`,
+            });
+          }
         }
       }
     }
