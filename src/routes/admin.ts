@@ -8,6 +8,7 @@ import { getPriceTable, setPlanPrice } from "../lib/catalog.js";
 import { getStripe } from "../lib/billing.js";
 import { isValidVolume } from "../lib/plans.js";
 import { toPlansResponse } from "./plans.js";
+import { toOnboardingResponse } from "./profile.js";
 import {
   createUserSchema,
   idParamSchema,
@@ -277,6 +278,21 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 // Stripe invoices across every customer, newest first, with the account they
 // belong to. Only paid invoices count towards revenue.
 const MAX_INVOICES = 1000;
+
+// Everyone's answers to the library's brand questionnaire, newest first.
+router.get("/onboarding", async (_req, res) => {
+  const rows = await prisma.onboardingAnswers.findMany({
+    orderBy: { updatedAt: "desc" },
+    include: { user: { select: { id: true, fullName: true, email: true } } },
+  });
+  res.json({
+    answers: rows.map((row) => ({
+      id: row.id,
+      user: row.user,
+      ...toOnboardingResponse(row)!,
+    })),
+  });
+});
 
 router.get("/transactions/payments", async (req, res) => {
   const { days, start, keys } = rangeFrom(req.query);

@@ -188,9 +188,35 @@ model User {
   notifications       Notification[]     @relation("NotificationActor")
   notificationsToMe   Notification[]     @relation("NotificationRecipient")
   notificationReads   NotificationRead[]
+  onboardingAnswers   OnboardingAnswers?
 
   @@index([accountId], map: "fk_users_account")
   @@map("users")
+}
+
+// A client's answers to the "Tell us about your brand" questionnaire that
+// pops up in the library, and is editable later from the profile page. One
+// row per user, saved step by step, so a half-finished one is kept too.
+model OnboardingAnswers {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique(map: "onboarding_answers_user") @map("user_id")
+  niche       String?   @db.VarChar(255)
+  product     String?   @db.Text
+  brand       String?   @db.VarChar(255)
+  website     String?   @db.VarChar(500)
+  // "meta" (Meta Ad Library) or "google" (Google Ads Transparency).
+  libraryType String?   @map("library_type") @db.VarChar(10)
+  libraryUrl  String?   @map("library_url") @db.VarChar(1000)
+  // Up to 5 brand names or websites.
+  competitors Json?
+  completedAt DateTime? @map("completed_at") @db.Timestamp(0)
+  // Last "Skip for now", so the popup waits a while before asking again.
+  skippedAt   DateTime? @map("skipped_at") @db.Timestamp(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_onboarding_answers_user")
+
+  @@map("onboarding_answers")
 }
 
 // Admin-written landing pages for outreach, e.g. /brands/samsung. The body

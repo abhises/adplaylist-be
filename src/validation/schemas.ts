@@ -138,6 +138,19 @@ export const updateProfileSchema = Joi.object({
   }),
 });
 
+// The library's brand questionnaire, saved one step at a time. "complete"
+// marks it finished; "skip" records a "Skip for now".
+export const onboardingAnswersSchema = Joi.object({
+  niche: Joi.string().trim().max(255).allow(""),
+  product: Joi.string().trim().max(2000).allow(""),
+  brand: Joi.string().trim().max(255).allow(""),
+  website: Joi.string().trim().max(500).allow(""),
+  libraryType: Joi.string().valid("meta", "google"),
+  libraryUrl: Joi.string().trim().max(1000).allow(""),
+  competitors: Joi.array().items(Joi.string().trim().min(1).max(255)).max(5),
+  action: Joi.string().valid("complete", "skip"),
+});
+
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   sizeNeeded: Joi.string().trim().allow(null, ""),
