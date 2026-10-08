@@ -168,7 +168,8 @@ export const canvaRequestSchema = Joi.object({
 });
 
 export const deliverRequestSchema = Joi.object({
-  adId: Joi.string().trim().min(1).required(),
+  deliveredUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),
+  note: Joi.string().trim().max(2000).allow(null, ""),
 });
 
 export const declineRequestSchema = Joi.object({

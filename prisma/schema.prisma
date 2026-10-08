@@ -132,6 +132,10 @@ model CreativeRequest {
   adId           Int?      @map("ad_id")
   // Link to the ad the request is about (an Adplaylist ad page or any URL).
   adUrl          String?   @map("ad_url") @db.VarChar(1000)
+  // Set on delivery: the link to the finished creative, and a message for
+  // the client.
+  deliveredUrl   String?   @map("delivered_url") @db.VarChar(1000)
+  deliveryNote   String?   @map("delivery_note") @db.Text
   attachmentUrl  String?   @map("attachment_url") @db.VarChar(500)
   attachmentName String?   @map("attachment_name") @db.VarChar(255)
   // The account whose credit paid for this request (null for staff, or for

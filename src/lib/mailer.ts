@@ -206,3 +206,118 @@ The Adplaylist team`;
 
   return { subject, text, html };
 }
+
+// Sent when the creative team delivers a client's request: the link to the
+// finished ad and the team's note, in the welcome email's design.
+export function deliveryEmail({
+  fullName,
+  title,
+  link,
+  note,
+}: {
+  fullName: string;
+  title: string;
+  link: string;
+  note: string | null;
+}) {
+  const site = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  const firstName = fullName.trim().split(/\s+/)[0] || "there";
+  const subject = `Your request is ready: ${title}`;
+  const requestsUrl = `${site}/requests?tab=Delivered`;
+
+  const text = `Hi ${firstName},
+
+Your request "${title}" is ready.
+
+Open it here: ${link}
+${note ? `\nA note from the team:\n${note}\n` : ""}
+You can see all your requests at ${requestsUrl}
+
+Questions or changes? Just reply to this email.
+
+The Adplaylist team`;
+
+  const font = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const shownLink = escapeHtml(link.replace(/^https?:\/\//, ""));
+  const href = escapeHtml(link).replace(/"/g, "&quot;");
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#F3F2F0;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your request &ldquo;${escapeHtml(title)}&rdquo; is ready to open.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F2F0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+
+          <!-- Hero -->
+          <tr>
+            <td style="background:#EC3016;padding:36px 40px 44px 40px;font-family:${font};color:#ffffff;">
+              <div style="font-size:13px;font-weight:800;letter-spacing:3px;text-transform:uppercase;">Adplaylist</div>
+              <div style="margin-top:40px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;">Delivered, ${escapeHtml(firstName)}</div>
+              <h1 style="margin:12px 0 0 0;font-size:44px;line-height:1;font-weight:800;letter-spacing:-1.5px;color:#ffffff;">Your new ad is ready.</h1>
+              <p style="margin:20px 0 0 0;font-size:17px;line-height:1.5;color:#ffffff;">The creative team has finished <strong>&ldquo;${escapeHtml(title)}&rdquo;</strong>. Open it, use it, launch it.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+                <tr>
+                  <td style="background:#161514;">
+                    <a href="${href}" style="display:inline-block;padding:16px 28px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">Open your ad &rarr;</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Details -->
+          <tr>
+            <td style="background:#ffffff;padding:40px 40px 8px 40px;font-family:${font};">${
+              note
+                ? `
+              <div style="font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#8a8783;">A note from the team</div>
+              <div style="margin-top:12px;border-left:3px solid #EC3016;padding:4px 0 4px 16px;font-size:16px;line-height:1.55;color:#161514;">${escapeHtml(note).replace(/\n/g, "<br>")}</div>
+              <div style="height:32px;"></div>`
+                : ""
+            }
+              <div style="font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#8a8783;">Your link</div>
+              <div style="margin-top:10px;font-size:15px;line-height:1.5;word-break:break-all;"><a href="${href}" style="color:#EC3016;font-weight:700;text-decoration:none;">${shownLink}</a></div>
+              <div style="margin-top:28px;font-size:15px;line-height:1.55;color:#55524e;">All your requests, delivered and open, are on your <a href="${requestsUrl}" style="color:#EC3016;font-weight:700;text-decoration:none;">Requests page</a>.</div>
+            </td>
+          </tr>
+
+          <!-- Reply note -->
+          <tr>
+            <td style="background:#ffffff;padding:24px 40px 40px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #e7e5e2;padding-top:24px;font-family:${font};font-size:15px;line-height:1.55;color:#55524e;">
+                    Want a change? Just reply to this email and tell us what to tweak.<br><br>
+                    <span style="color:#161514;font-weight:700;">The Adplaylist team</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:24px 40px;font-family:${font};font-size:12px;line-height:1.6;color:#8a8783;">
+              You're receiving this because you requested a creative on <a href="${site}" style="color:#8a8783;">adplaylist.com</a>.<br>
+              &copy; ${new Date().getFullYear()} Adplaylist
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}

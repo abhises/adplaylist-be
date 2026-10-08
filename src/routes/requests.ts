@@ -18,16 +18,50 @@ import {
 } from "../validation/schemas.js";
 import { toAdResponse } from "./ads.js";
 import { broadcastRequest, notifyStaff, notifyUser } from "../lib/realtime.js";
+import { deliveryEmail, mailConfigured, sendMail } from "../lib/mailer.js";
 import type { Account, Ad, CreativeRequest, User } from "../generated/prisma/client.js";
 
 const router = Router();
 
 const CANVA_EDIT = "Canva edit";
 
+function siteUrl() {
+  return (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+}
+
 // The public page of an ad, saved on Canva edit requests as their ad link.
 function adPageUrl(slug: string) {
-  const site = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
-  return `${site}/ads/${slug}`;
+  return `${siteUrl()}/ads/${slug}`;
+}
+
+// The ad a delivered link points at, when it's one of our own ad pages
+// (…/ads/<slug>, on any of our hosts), so it shows as a card for the client.
+async function adFromUrl(url: string) {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const slug = path.match(/^\/ads\/([^/]+)\/?$/)?.[1];
+  if (!slug) return null;
+  return prisma.ad.findUnique({ where: { slug: decodeURIComponent(slug) } });
+}
+
+// Emails the client that their request is ready. Best effort: the in-app
+// notification is the main one, so a mail failure is only logged.
+function emailDelivery(
+  to: string,
+  fullName: string,
+  title: string,
+  link: string,
+  note: string | null
+) {
+  if (!mailConfigured()) return;
+  const { subject, text, html } = deliveryEmail({ fullName, title, link, note });
+  sendMail({ to, subject, text, html }).catch((err) =>
+    console.error("Delivery email failed:", (err as Error).message)
+  );
 }
 
 // Loads what staff need to see who sent a request: the person and the
@@ -51,6 +85,8 @@ function toRequestResponse(
     title: request.title,
     type: request.type,
     adUrl: request.adUrl ?? undefined,
+    deliveredUrl: request.deliveredUrl ?? undefined,
+    deliveryNote: request.deliveryNote ?? undefined,
     sizeNeeded: request.sizeNeeded ?? undefined,
     neededBy: request.neededBy ?? undefined,
     notes: request.notes ?? undefined,
@@ -280,14 +316,20 @@ router.post(
   validateParams(idParamSchema),
   validateBody(deliverRequestSchema),
   async (req: AuthedRequest, res) => {
-    const { adId } = req.body;
-
-    const ad = await prisma.ad.findUnique({ where: { slug: adId } });
-    if (!ad) return res.status(404).json({ error: "Ad not found" });
+    const deliveredUrl: string = req.body.deliveredUrl;
+    const note: string | null = req.body.note || null;
+    // A Canva edit is about its ad already; otherwise link the delivered ad
+    // when the URL is one of our ad pages.
+    const ad = await adFromUrl(deliveredUrl);
 
     const { count } = await prisma.creativeRequest.updateMany({
       where: { id: Number(req.params.id) },
-      data: { status: "Delivered", adId: ad.id },
+      data: {
+        status: "Delivered",
+        deliveredUrl,
+        deliveryNote: note,
+        ...(ad ? { adId: ad.id } : {}),
+      },
     });
     if (count === 0) {
       return res.status(404).json({ error: "Request not found" });
@@ -305,11 +347,12 @@ router.post(
       await notifyUser(updated.userId, {
         type: "request.delivered",
         title: "Your request was delivered",
-        body: updated.title,
+        body: note ? `${updated.title}: ${note}` : updated.title,
         link: "/requests?tab=Delivered",
         requestId: updated.id,
         actorId: req.userId,
       });
+      emailDelivery(updated.user.email, updated.user.fullName, updated.title, deliveredUrl, note);
     }
     res.json({ request: response });
   }
