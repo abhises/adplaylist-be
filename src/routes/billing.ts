@@ -9,6 +9,7 @@ import {
   syncSubscription,
   toAccountResponse,
 } from "../lib/billing.js";
+import { renderInvoicePdf } from "../lib/invoicePdf.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -244,6 +245,39 @@ router.get(
           credits: creditsFor(inv.id),
         })),
     });
+  }
+);
+
+// One of the account's invoices as an Adplaylist-branded PDF. Owner only,
+// like the payments list; another customer's invoice is a 404.
+router.get(
+  "/payments/:invoiceId/pdf",
+  requireAuth,
+  loadAccount,
+  requireAccountOwner,
+  async (req: AuthedRequest, res) => {
+    const customer = req.account!.stripeCustomerId;
+    const invoiceId = String(req.params.invoiceId);
+    if (!customer || !/^in_[A-Za-z0-9]+$/.test(invoiceId)) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    let inv: Stripe.Invoice;
+    try {
+      inv = await getStripe().invoices.retrieve(invoiceId);
+    } catch {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    const owner = typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
+    if (owner !== customer || inv.status === "draft") {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="adplaylist-${inv.number ?? inv.id}.pdf"`
+    );
+    renderInvoicePdf(inv, { companyName: req.account!.name, site: frontendUrl() }).pipe(res);
   }
 );
 
