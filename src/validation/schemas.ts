@@ -84,6 +84,7 @@ export const createAdSchema = Joi.object({
   swatch: Joi.string().trim().allow("").max(255),
   light: Joi.boolean(),
   category: Joi.string().trim().min(1).max(100).required(),
+  categories: Joi.array().items(Joi.string().trim().min(1).max(100)).max(20),
   market: Joi.string().trim().min(1).max(50).required(),
   language: Joi.string().trim().allow("").max(50),
   photo: Joi.string().uri().allow(null, "").max(500),

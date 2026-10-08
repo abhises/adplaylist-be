@@ -28,6 +28,14 @@ const isoDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : undefine
 
 // `full` adds the long-form page content, which lists (the library grid,
 // saved ads) don't need.
+// All of an ad's categories, primary first. Older ads only have `category`.
+function adCategories(ad: { category: string; categories: Prisma.JsonValue | null }) {
+  const list = Array.isArray(ad.categories)
+    ? ad.categories.filter((c): c is string => typeof c === "string" && !!c)
+    : [];
+  return list.length ? list : [ad.category];
+}
+
 export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
   return {
     id: ad.slug,
@@ -48,6 +56,7 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     swatch: ad.swatch,
     light: ad.light,
     category: ad.category,
+    categories: adCategories(ad),
     market: ad.market,
     language: ad.language,
     photo: ad.photoUrl ?? undefined,
@@ -96,7 +105,11 @@ router.get("/", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
     req.query;
   const where: Prisma.AdWhereInput = {};
 
-  if (typeof category === "string" && category) where.category = category;
+  if (typeof category === "string" && category) {
+    where.AND = [
+      { OR: [{ category }, { categories: { array_contains: category } }] },
+    ];
+  }
   if (typeof market === "string" && market) where.market = market;
   if (typeof language === "string" && language) where.language = language;
   if (typeof mediaType === "string" && mediaType) where.mediaType = mediaType;
@@ -257,6 +270,15 @@ router.patch(
 
 // Maps a validated create/update body to the ad's columns. Both routes send
 // the full ad, so a field left out is cleared rather than kept.
+// The primary category is the first in the list; a body with only
+// `category` (older clients, CSV scripts) is a list of one.
+function categoryData(b: Record<string, any>) {
+  const list: string[] = Array.isArray(b.categories) && b.categories.length
+    ? [...new Set<string>(b.categories)]
+    : [b.category as string];
+  return { category: list[0]!, categories: list };
+}
+
 function toAdData(body: Record<string, unknown>) {
   const b = body as Record<string, any>;
   return {
@@ -275,7 +297,7 @@ function toAdData(body: Record<string, unknown>) {
     mediaType: b.mediaType ?? "image",
     swatch: b.swatch || "bg-neutral-800",
     light: !!b.light,
-    category: b.category,
+    ...categoryData(b),
     market: b.market,
     language: b.language || "English (EN)",
     photoUrl: b.photo || null,
