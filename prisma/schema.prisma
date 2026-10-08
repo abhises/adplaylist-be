@@ -127,6 +127,8 @@ model CreativeRequest {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
   reason         String?   @db.Text
   adId           Int?      @map("ad_id")
+  // Link to the ad the request is about (an Adplaylist ad page or any URL).
+  adUrl          String?   @map("ad_url") @db.VarChar(1000)
   attachmentUrl  String?   @map("attachment_url") @db.VarChar(500)
   attachmentName String?   @map("attachment_name") @db.VarChar(255)
   // The account whose credit paid for this request (null for staff, or for

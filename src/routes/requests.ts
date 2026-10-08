@@ -24,6 +24,12 @@ const router = Router();
 
 const CANVA_EDIT = "Canva edit";
 
+// The public page of an ad, saved on Canva edit requests as their ad link.
+function adPageUrl(slug: string) {
+  const site = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  return `${site}/ads/${slug}`;
+}
+
 // Loads what staff need to see who sent a request: the person and the
 // company account they belong to.
 const withRequester = {
@@ -44,6 +50,7 @@ function toRequestResponse(
     id: request.id,
     title: request.title,
     type: request.type,
+    adUrl: request.adUrl ?? undefined,
     sizeNeeded: request.sizeNeeded ?? undefined,
     neededBy: request.neededBy ?? undefined,
     notes: request.notes ?? undefined,
@@ -140,7 +147,7 @@ router.post(
   requireEntitlement("requests"),
   validateBody(createRequestSchema),
   async (req: AuthedRequest, res) => {
-    const { title, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
+    const { title, adUrl, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
       req.body;
 
     const account = req.userRole === "client" ? req.account ?? null : null;
@@ -165,6 +172,7 @@ router.post(
           creditCharged: !!account,
           title,
           type: "New creative",
+          adUrl,
           sizeNeeded: sizeNeeded ?? null,
           neededBy: neededBy ? new Date(neededBy) : null,
           notes: notes ?? null,
@@ -243,6 +251,7 @@ router.post(
           notes: "Add an editable Canva copy of this ad.",
           status: "Open",
           adId: ad.id,
+          adUrl: adPageUrl(ad.slug),
         },
       });
     } catch (err) {

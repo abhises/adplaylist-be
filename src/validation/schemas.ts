@@ -153,7 +153,8 @@ export const onboardingAnswersSchema = Joi.object({
 
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
-  sizeNeeded: Joi.string().trim().allow(null, ""),
+  adUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),
+  sizeNeeded: Joi.string().trim().max(150).allow(null, ""),
   neededBy: Joi.date().allow(null, ""),
   notes: Joi.string().trim().allow(null, ""),
   attachmentUrl: Joi.string().uri().allow(null, ""),
