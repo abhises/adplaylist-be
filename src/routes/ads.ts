@@ -36,6 +36,14 @@ function adCategories(ad: { category: string; categories: Prisma.JsonValue | nul
   return list.length ? list : [ad.category];
 }
 
+// All of an ad's markets, primary first. Older ads only have `market`.
+function adMarkets(ad: { market: string; markets: Prisma.JsonValue | null }) {
+  const list = Array.isArray(ad.markets)
+    ? ad.markets.filter((m): m is string => typeof m === "string" && !!m)
+    : [];
+  return list.length ? list : [ad.market];
+}
+
 export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
   return {
     id: ad.slug,
@@ -58,6 +66,7 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     category: ad.category,
     categories: adCategories(ad),
     market: ad.market,
+    markets: adMarkets(ad),
     language: ad.language,
     photo: ad.photoUrl ?? undefined,
     platforms: ad.platforms ? ad.platforms.split(",") : [],
@@ -105,12 +114,14 @@ router.get("/", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
     req.query;
   const where: Prisma.AdWhereInput = {};
 
+  const and: Prisma.AdWhereInput[] = [];
   if (typeof category === "string" && category) {
-    where.AND = [
-      { OR: [{ category }, { categories: { array_contains: category } }] },
-    ];
+    and.push({ OR: [{ category }, { categories: { array_contains: category } }] });
   }
-  if (typeof market === "string" && market) where.market = market;
+  if (typeof market === "string" && market) {
+    and.push({ OR: [{ market }, { markets: { array_contains: market } }] });
+  }
+  if (and.length) where.AND = and;
   if (typeof language === "string" && language) where.language = language;
   if (typeof mediaType === "string" && mediaType) where.mediaType = mediaType;
   if (typeof platform === "string" && platform) {
@@ -279,6 +290,14 @@ function categoryData(b: Record<string, any>) {
   return { category: list[0]!, categories: list };
 }
 
+// Same shape as categoryData: the primary market is the first in the list.
+function marketData(b: Record<string, any>) {
+  const list: string[] = Array.isArray(b.markets) && b.markets.length
+    ? [...new Set<string>(b.markets)]
+    : [b.market as string];
+  return { market: list[0]!, markets: list };
+}
+
 function toAdData(body: Record<string, unknown>) {
   const b = body as Record<string, any>;
   return {
@@ -298,7 +317,7 @@ function toAdData(body: Record<string, unknown>) {
     swatch: b.swatch || "bg-neutral-800",
     light: !!b.light,
     ...categoryData(b),
-    market: b.market,
+    ...marketData(b),
     language: b.language || "English (EN)",
     photoUrl: b.photo || null,
     platforms: Array.isArray(b.platforms) ? b.platforms.join(",") : "",

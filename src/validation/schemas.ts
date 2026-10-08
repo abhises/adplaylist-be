@@ -86,6 +86,7 @@ export const createAdSchema = Joi.object({
   category: Joi.string().trim().min(1).max(100).required(),
   categories: Joi.array().items(Joi.string().trim().min(1).max(100)).max(3),
   market: Joi.string().trim().min(1).max(50).required(),
+  markets: Joi.array().items(Joi.string().trim().min(1).max(50)).max(3),
   language: Joi.string().trim().allow("").max(50),
   photo: Joi.string().uri().allow(null, "").max(500),
   platforms: Joi.array().items(Joi.string()),

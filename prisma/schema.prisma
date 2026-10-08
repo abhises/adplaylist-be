@@ -31,6 +31,9 @@ model Ad {
   // kept for breadcrumbs and page titles. Null on ads saved before this.
   categories          Json?
   market              String   @db.VarChar(50)
+  // Every market the ad runs in (JSON array). `market` is the first one.
+  // Null on ads saved before this.
+  markets             Json?
   language            String   @default("English (EN)") @db.VarChar(50)
   photoUrl            String?  @map("photo_url") @db.VarChar(500)
   // A copy of photoUrl with the ADPLAYLIST watermark baked in: what unpaid
