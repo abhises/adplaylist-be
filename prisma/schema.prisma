@@ -48,6 +48,9 @@ model Ad {
   canvaUrl            String?  @map("canva_url") @db.VarChar(500)
   // A Canva copy that took extra work: shown with a "Premium" badge.
   canvaPremium        Boolean  @default(false) @map("canva_premium")
+  // Copied from a real, running ad ("Live ad"), as opposed to a concept
+  // made for the library.
+  isLive              Boolean  @default(false) @map("is_live")
   // Picked by an admin to show on the landing page: `featured` in the
   // library section; `heroPlatforms` lists the hero panel tabs it was picked
   // for (comma-separated, e.g. "META,Google"; empty when not in the hero).
