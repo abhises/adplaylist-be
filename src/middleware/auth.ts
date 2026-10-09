@@ -35,7 +35,7 @@ export function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunct
   next();
 }
 
-export function requireAuth(
+export async function requireAuth(
   req: AuthedRequest,
   res: Response,
   next: NextFunction
@@ -47,13 +47,23 @@ export function requireAuth(
     return res.status(401).json({ error: "Not authenticated" });
   }
 
+  let userId: number;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: number };
-    req.userId = payload.userId;
-    next();
+    userId = (jwt.verify(token, JWT_SECRET) as { userId: number }).userId;
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+  // A deleted (deactivated) account's sessions stop working straight away,
+  // on every device, not just when the token expires.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { deactivatedAt: true },
+  });
+  if (!user || user.deactivatedAt) {
+    return res.status(401).json({ error: "This account has been deleted." });
+  }
+  req.userId = userId;
+  next();
 }
 
 // Checked against the database on every request, rather than trusting a role

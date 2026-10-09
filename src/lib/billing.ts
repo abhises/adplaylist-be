@@ -212,7 +212,7 @@ export function entitlementsOf(account: Account | null): Entitlements {
   const plan = isPlanId(account.plan) ? account.plan : "starter";
   // The free trial needs a card on file (a Stripe subscription) before
   // anything unlocks; until then the account can only browse, like expired.
-  if (needsCard(account)) return entitlementsFor(plan, "expired");
+  if (needsCard(account) || account.paymentRequired) return entitlementsFor(plan, "expired");
   const entitlements = entitlementsFor(plan, account.status as AccountStatus);
   // A trial cancelled before paying never became a paid plan.
   return cancelledInTrial(account) ? { ...entitlements, cleanDownload: false } : entitlements;
@@ -268,6 +268,8 @@ export async function toAccountResponse(account: Account, accountRole: string | 
       account.billingCycle === "yearly" ? account.nextRefillAt : account.currentPeriodEnd,
     hasSubscription: !!account.stripeSubscriptionId,
     needsCard: needsCard(account),
+    // Came back after deleting their account: must subscribe (no trial).
+    paymentRequired: account.paymentRequired,
     cancelledInTrial: cancelledInTrial(account),
     maxBrands: def.maxBrands,
     maxSeats: def.maxSeats,
@@ -407,6 +409,8 @@ export async function syncSubscription(subscriptionId: string): Promise<Account 
         ? fromUnix(sub.cancel_at) ?? fromUnix(item.current_period_end)
         : fromUnix(item.current_period_end),
     pastDueSince: status === "past_due" ? account.pastDueSince ?? new Date() : null,
+    // A returning customer has subscribed again: the app unlocks.
+    paymentRequired: false,
   };
   let grant: Grant | undefined;
 

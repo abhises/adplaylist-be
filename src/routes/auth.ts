@@ -7,6 +7,7 @@ import { validateBody } from "../middleware/validate.js";
 import { googleAuthSchema, loginSchema, registerSchema } from "../validation/schemas.js";
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
 import { sendWelcomeEmail } from "../lib/mailer.js";
+import { welcomeBack } from "../lib/reactivation.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { notifyAdmins } from "../lib/realtime.js";
 import { userResponseFor } from "./profile.js";
@@ -52,6 +53,11 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
   const { fullName, email, password, role } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing?.deactivatedAt) {
+    return res.status(409).json({
+      error: "Welcome back! You already have an account. Sign in to reactivate it.",
+    });
+  }
   if (existing) {
     return res.status(409).json({ error: "An account with that email already exists" });
   }
@@ -94,11 +100,14 @@ router.post("/login", validateBody(loginSchema), async (req, res) => {
   if (!valid) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
+  // Coming back after deleting their account: it's reactivated.
+  const returning = !!user.deactivatedAt;
+  if (returning) await welcomeBack(user);
 
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
 
-  res.json({ token, user: await userResponseFor(user.id) });
+  res.json({ token, user: await userResponseFor(user.id), welcomeBack: returning });
 });
 
 router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
@@ -137,6 +146,8 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
         });
     isNewUser = !existingByEmail;
   }
+  const returning = !!user.deactivatedAt;
+  if (returning) await welcomeBack(user);
 
   const token = signToken(user.id);
   if (!token) return res.status(500).json({ error: "Server misconfigured" });
@@ -146,7 +157,7 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
     announceSignup(user, "Google");
   }
 
-  res.json({ token, user: await userResponseFor(user.id) });
+  res.json({ token, user: await userResponseFor(user.id), welcomeBack: returning });
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res) => {

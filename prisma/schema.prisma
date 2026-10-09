@@ -127,32 +127,32 @@ model Author {
 }
 
 model CreativeRequest {
-  id             Int       @id @default(autoincrement())
-  userId         Int       @map("user_id")
-  title          String    @db.VarChar(255)
-  type           String    @default("New creative") @db.VarChar(50)
-  sizeNeeded     String?   @map("size_needed") @db.VarChar(150)
-  neededBy       DateTime? @map("needed_by") @db.Date
-  notes          String?   @db.Text
-  status         String    @default("Open") @db.VarChar(30)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
-  reason         String?   @db.Text
-  adId           Int?      @map("ad_id")
+  id             Int            @id @default(autoincrement())
+  userId         Int            @map("user_id")
+  title          String         @db.VarChar(255)
+  type           String         @default("New creative") @db.VarChar(50)
+  sizeNeeded     String?        @map("size_needed") @db.VarChar(150)
+  neededBy       DateTime?      @map("needed_by") @db.Date
+  notes          String?        @db.Text
+  status         String         @default("Open") @db.VarChar(30)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  reason         String?        @db.Text
+  adId           Int?           @map("ad_id")
   // Link to the ad the request is about (an Adplaylist ad page or any URL).
-  adUrl          String?   @map("ad_url") @db.VarChar(1000)
+  adUrl          String?        @map("ad_url") @db.VarChar(1000)
   // Set on delivery: the link to the finished creative, and a message for
   // the client.
-  deliveredUrl   String?   @map("delivered_url") @db.VarChar(1000)
-  deliveryNote   String?   @map("delivery_note") @db.Text
-  attachmentUrl  String?   @map("attachment_url") @db.VarChar(500)
-  attachmentName String?   @map("attachment_name") @db.VarChar(255)
+  deliveredUrl   String?        @map("delivered_url") @db.VarChar(1000)
+  deliveryNote   String?        @map("delivery_note") @db.Text
+  attachmentUrl  String?        @map("attachment_url") @db.VarChar(500)
+  attachmentName String?        @map("attachment_name") @db.VarChar(255)
   // The account whose credit paid for this request (null for staff, or for
   // requests made before credits existed). Declining refunds it.
-  accountId      Int?      @map("account_id")
-  creditCharged  Boolean   @default(false) @map("credit_charged")
-  account        Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
-  ad             Ad?       @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
+  accountId      Int?           @map("account_id")
+  creditCharged  Boolean        @default(false) @map("credit_charged")
+  account        Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
+  ad             Ad?            @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
   notifications  Notification[]
 
   @@index([adId], map: "fk_requests_ad")
@@ -175,38 +175,42 @@ model SavedAd {
 }
 
 model User {
-  id                  Int               @id @default(autoincrement())
-  email               String            @unique(map: "email") @db.VarChar(255)
-  passwordHash        String?           @map("password_hash") @db.VarChar(255)
-  googleId            String?           @unique(map: "google_id") @map("google_id") @db.VarChar(255)
-  fullName            String            @map("full_name") @db.VarChar(255)
-  defaultLanguage     String            @default("English (EN)") @map("default_language") @db.VarChar(50)
-  gridDensity         String            @default("Comfortable") @map("grid_density") @db.VarChar(20)
-  prefOnboarding      Boolean           @default(true) @map("pref_onboarding")
-  prefProduct         Boolean           @default(true) @map("pref_product")
-  prefPromotions      Boolean           @default(false) @map("pref_promotions")
-  prefBrand           Boolean           @default(true) @map("pref_brand")
-  prefNewsletter      Boolean           @default(false) @map("pref_newsletter")
-  role                String            @default("client") @db.VarChar(20)
+  id                  Int                    @id @default(autoincrement())
+  email               String                 @unique(map: "email") @db.VarChar(255)
+  passwordHash        String?                @map("password_hash") @db.VarChar(255)
+  googleId            String?                @unique(map: "google_id") @map("google_id") @db.VarChar(255)
+  fullName            String                 @map("full_name") @db.VarChar(255)
+  defaultLanguage     String                 @default("English (EN)") @map("default_language") @db.VarChar(50)
+  gridDensity         String                 @default("Comfortable") @map("grid_density") @db.VarChar(20)
+  prefOnboarding      Boolean                @default(true) @map("pref_onboarding")
+  prefProduct         Boolean                @default(true) @map("pref_product")
+  prefPromotions      Boolean                @default(false) @map("pref_promotions")
+  prefBrand           Boolean                @default(true) @map("pref_brand")
+  prefNewsletter      Boolean                @default(false) @map("pref_newsletter")
+  role                String                 @default("client") @db.VarChar(20)
   // Extra access on top of the role, granted by an admin: managing the blog
   // and/or brand pages. Admins can always do both.
-  canManageBlog       Boolean           @default(false) @map("can_manage_blog")
-  canManageBrandPages Boolean           @default(false) @map("can_manage_brand_pages")
-  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  canManageBlog       Boolean                @default(false) @map("can_manage_blog")
+  canManageBrandPages Boolean                @default(false) @map("can_manage_brand_pages")
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamp(0)
   // The customer account (company) this person belongs to, and whether they
   // own it or were invited. Null for Adplaylist staff, who never use a seat.
-  accountId           Int?              @map("account_id")
-  accountRole         String?           @map("account_role") @db.VarChar(10)
-  account             Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_account")
+  accountId           Int?                   @map("account_id")
+  accountRole         String?                @map("account_role") @db.VarChar(10)
+  // Set when the user deletes their account from the profile page: they
+  // can't sign in any more, but their data is kept (nothing is erased).
+  deactivatedAt       DateTime?              @map("deactivated_at") @db.Timestamp(0)
+  account             Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_account")
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]
   feedback            Feedback[]
   contactReplies      ContactReply[]
-  notifications       Notification[]     @relation("NotificationActor")
-  notificationsToMe   Notification[]     @relation("NotificationRecipient")
+  notifications       Notification[]         @relation("NotificationActor")
+  notificationsToMe   Notification[]         @relation("NotificationRecipient")
   notificationReads   NotificationRead[]
   onboardingAnswers   OnboardingAnswers?
   savedFilters        SavedFilter[]
+  cancellations       CancellationFeedback[]
 
   @@index([accountId], map: "fk_users_account")
   @@map("users")
@@ -321,32 +325,39 @@ model Feedback {
 // the subscription; webhooks (routes/billing.ts) copy its state into these
 // columns. See "Adplaylist – User Types & Plan Rules" for the rules.
 model Account {
-  id                   Int                 @id @default(autoincrement())
-  name                 String              @db.VarChar(255)
+  id                   Int                    @id @default(autoincrement())
+  name                 String                 @db.VarChar(255)
   // starter | pro | agency
-  plan                 String              @default("starter") @db.VarChar(20)
+  plan                 String                 @default("starter") @db.VarChar(20)
   // Credits per month the plan includes: 0 for Starter, 10–40 Pro, 50–150 Agency.
-  creditVolume         Int                 @default(0) @map("credit_volume")
+  creditVolume         Int                    @default(0) @map("credit_volume")
   // monthly | yearly
-  billingCycle         String              @default("monthly") @map("billing_cycle") @db.VarChar(10)
+  billingCycle         String                 @default("monthly") @map("billing_cycle") @db.VarChar(10)
   // trial | active | past_due | cancelled | expired
-  status               String              @default("trial") @db.VarChar(20)
-  trialEndsAt          DateTime?           @map("trial_ends_at") @db.DateTime(0)
+  status               String                 @default("trial") @db.VarChar(20)
+  trialEndsAt          DateTime?              @map("trial_ends_at") @db.DateTime(0)
   // When the paid period ends; for a cancelled account, when it expires.
-  currentPeriodEnd     DateTime?           @map("current_period_end") @db.DateTime(0)
-  pastDueSince         DateTime?           @map("past_due_since") @db.DateTime(0)
-  credits              Int                 @default(0)
+  currentPeriodEnd     DateTime?              @map("current_period_end") @db.DateTime(0)
+  pastDueSince         DateTime?              @map("past_due_since") @db.DateTime(0)
+  credits              Int                    @default(0)
   // Yearly plans refill monthly; this is when the next refill is due.
-  nextRefillAt         DateTime?           @map("next_refill_at") @db.DateTime(0)
+  nextRefillAt         DateTime?              @map("next_refill_at") @db.DateTime(0)
   // The paid invoice that last refilled credits, so handling it twice (a
   // redelivered webhook, or the checkout return page) can't refill again.
-  lastRefillInvoiceId  String?             @map("last_refill_invoice_id") @db.VarChar(255)
-  stripeCustomerId     String?             @unique(map: "accounts_stripe_customer") @map("stripe_customer_id") @db.VarChar(255)
-  stripeSubscriptionId String?             @unique(map: "accounts_stripe_subscription") @map("stripe_subscription_id") @db.VarChar(255)
-  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamp(0)
+  lastRefillInvoiceId  String?                @map("last_refill_invoice_id") @db.VarChar(255)
+  stripeCustomerId     String?                @unique(map: "accounts_stripe_customer") @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String?                @unique(map: "accounts_stripe_subscription") @map("stripe_subscription_id") @db.VarChar(255)
+  // Discounts claimed from the "Before you go" offer when deleting the
+  // account: the first offer is 25%, the second 10%, then none.
+  retentionOffersUsed  Int                    @default(0) @map("retention_offers_used")
+  // Set when an owner who deleted their account comes back: no new free
+  // trial, and the app stays locked until they subscribe (which clears it).
+  paymentRequired      Boolean                @default(false) @map("payment_required")
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamp(0)
   users                User[]
   creativeRequests     CreativeRequest[]
   creditTransactions   CreditTransaction[]
+  cancellations        CancellationFeedback[]
 
   @@map("accounts")
 }
@@ -504,4 +515,32 @@ model NotificationRead {
   @@id([notificationId, userId])
   @@index([userId], map: "fk_notification_reads_user")
   @@map("notification_reads")
+}
+
+// What happened each time someone went through "Delete account": the offer
+// they were shown, whether they took it, and (when they went ahead) why.
+// Names are copied in so the row still reads well if the user changes.
+model CancellationFeedback {
+  id           Int      @id @default(autoincrement())
+  userId       Int?     @map("user_id")
+  accountId    Int?     @map("account_id")
+  userName     String   @map("user_name") @db.VarChar(255)
+  userEmail    String   @map("user_email") @db.VarChar(255)
+  accountName  String?  @map("account_name") @db.VarChar(255)
+  plan         String?  @db.VarChar(20)
+  // The discount offered, e.g. 25 (percent), or null when none was shown.
+  offerPercent Int?     @map("offer_percent")
+  // "discount": took the offer and stayed; "deactivated": went ahead;
+  // "returned": signed in again afterwards, which reactivates them.
+  outcome      String   @db.VarChar(20)
+  reason       String?  @db.VarChar(100)
+  details      String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_cancellations_user")
+  account      Account? @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_cancellations_account")
+
+  @@index([userId], map: "fk_cancellations_user")
+  @@index([accountId], map: "fk_cancellations_account")
+  @@index([createdAt], map: "cancellations_created")
+  @@map("cancellation_feedback")
 }

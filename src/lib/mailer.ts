@@ -207,6 +207,91 @@ The Adplaylist team`;
   return { subject, text, html };
 }
 
+// Sent when someone who deleted their account signs in again. An owner is
+// told to choose a plan (charged straight away: no second free trial); a
+// team member is simply back on their company's plan.
+export function sendWelcomeBackEmail(to: string, fullName: string, mustSubscribe: boolean) {
+  if (!mailConfigured()) return;
+  const { subject, text, html } = welcomeBackEmail(fullName, mustSubscribe);
+  sendMail({ to, subject, text, html }).catch((err) =>
+    console.error("Welcome back email failed:", (err as Error).message)
+  );
+}
+
+export function welcomeBackEmail(fullName: string, mustSubscribe: boolean) {
+  const site = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  const firstName = fullName.trim().split(/\s+/)[0] || "there";
+  const subject = `Welcome back to Adplaylist, ${firstName}`;
+  const next = mustSubscribe
+    ? "Your account is active again and everything you had is still here. Choose a plan to unlock the library again. Your new plan starts today."
+    : "Your account is active again and everything you had is still here.";
+  const cta = mustSubscribe
+    ? { href: `${site}/billing`, label: "Choose a plan" }
+    : { href: `${site}/library`, label: "Open the library" };
+
+  const text = `Hi ${firstName},
+
+Welcome back to Adplaylist! ${next}
+
+${cta.label}: ${cta.href}
+
+Questions? Just reply to this email.
+
+The Adplaylist team`;
+
+  const font = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#F3F2F0;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(next)}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F2F0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+          <tr>
+            <td style="background:#EC3016;padding:36px 40px 44px 40px;font-family:${font};color:#ffffff;">
+              <div style="font-size:13px;font-weight:800;letter-spacing:3px;text-transform:uppercase;">Adplaylist</div>
+              <div style="margin-top:40px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;">Good to see you, ${escapeHtml(firstName)}</div>
+              <h1 style="margin:12px 0 0 0;font-size:44px;line-height:1;font-weight:800;letter-spacing:-1.5px;color:#ffffff;">Welcome back.</h1>
+              <p style="margin:20px 0 0 0;font-size:17px;line-height:1.5;color:#ffffff;">${escapeHtml(next)}</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+                <tr>
+                  <td style="background:#161514;">
+                    <a href="${cta.href}" style="display:inline-block;padding:16px 28px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">${cta.label} &rarr;</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#ffffff;padding:32px 40px 40px 40px;font-family:${font};font-size:15px;line-height:1.55;color:#55524e;">
+              Questions or ideas? Just reply to this email. A real person reads every one.<br><br>
+              <span style="color:#161514;font-weight:700;">The Adplaylist team</span>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:24px 40px;font-family:${font};font-size:12px;line-height:1.6;color:#8a8783;">
+              You're receiving this because you signed back in at <a href="${site}" style="color:#8a8783;">adplaylist.com</a>.<br>
+              &copy; ${new Date().getFullYear()} Adplaylist
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 // Sent when the creative team delivers a client's request: the link to the
 // finished ad and the team's note, in the welcome email's design.
 export function deliveryEmail({

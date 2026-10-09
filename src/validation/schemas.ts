@@ -185,6 +185,27 @@ export const updateSavedFilterSchema = Joi.object({
   isDefault: Joi.boolean(),
 }).min(1);
 
+// "Delete account": why they're leaving. A comment is optional except for
+// "Other", where it's the whole answer.
+export const CANCEL_REASONS = [
+  "Too expensive",
+  "I'm not using it enough",
+  "Missing features I need",
+  "Found a better alternative",
+  "Technical issues or bugs",
+  "Other",
+];
+export const deleteAccountSchema = Joi.object({
+  reason: Joi.string()
+    .valid(...CANCEL_REASONS)
+    .required(),
+  details: Joi.when("reason", {
+    is: "Other",
+    then: Joi.string().trim().min(1).max(2000).required(),
+    otherwise: Joi.string().trim().max(2000).allow(""),
+  }),
+});
+
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   adUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),
