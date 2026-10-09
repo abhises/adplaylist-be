@@ -11,6 +11,7 @@ import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import adsRoutes from "./routes/ads.js";
 import savedRoutes from "./routes/saved.js";
+import savedFiltersRoutes from "./routes/savedFilters.js";
 import requestsRoutes from "./routes/requests.js";
 import profileRoutes from "./routes/profile.js";
 import uploadsRoutes from "./routes/uploads.js";
@@ -64,6 +65,7 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/ads", adsRoutes);
 app.use("/api/saved", savedRoutes);
+app.use("/api/saved-filters", savedFiltersRoutes);
 app.use("/api/requests", requestsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/uploads", uploadsRoutes);

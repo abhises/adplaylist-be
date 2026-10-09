@@ -153,6 +153,34 @@ export const onboardingAnswersSchema = Joi.object({
   action: Joi.string().valid("complete", "skip"),
 });
 
+// A saved library filter. Lists are capped well above what the library
+// offers, just to keep a row small.
+const filterList = Joi.array().items(Joi.string().trim().min(1).max(100)).max(50);
+export const savedFilterSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(60).required(),
+  isDefault: Joi.boolean().default(false),
+  filters: Joi.object({
+    keyword: Joi.string().trim().max(200).allow(""),
+    mediaTypes: filterList,
+    platforms: filterList,
+    categories: filterList,
+    country: Joi.string().trim().max(100).allow(""),
+    language: Joi.string().trim().max(100).allow(""),
+    addedDays: Joi.number().integer().min(1).max(3650).allow(null),
+    formats: filterList,
+    canva: Joi.string().valid("", "editable", "non-editable"),
+    lengths: filterList,
+    colors: filterList,
+    tags: filterList,
+  }).required(),
+});
+
+// Rename a saved filter and/or make it (or stop it being) the default.
+export const updateSavedFilterSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(60),
+  isDefault: Joi.boolean(),
+}).min(1);
+
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   adUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),

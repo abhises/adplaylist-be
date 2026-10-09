@@ -201,9 +201,27 @@ model User {
   notificationsToMe   Notification[]     @relation("NotificationRecipient")
   notificationReads   NotificationRead[]
   onboardingAnswers   OnboardingAnswers?
+  savedFilters        SavedFilter[]
 
   @@index([accountId], map: "fk_users_account")
   @@map("users")
+}
+
+// A set of library filters a user saved to apply again in one click (up to
+// 3 each). The default one is applied when they open the library.
+model SavedFilter {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  name      String   @db.VarChar(60)
+  // The library's filter values; "added" is kept as a number of days, so
+  // "last 7 days" stays relative to when the filter is applied.
+  filters   Json
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_saved_filters_user")
+
+  @@index([userId], map: "fk_saved_filters_user")
+  @@map("saved_filters")
 }
 
 // A client's answers to the "Tell us about your brand" questionnaire that
