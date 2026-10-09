@@ -195,7 +195,8 @@ export const createRequestSchema = Joi.object({
   attachmentName: Joi.string().trim().allow(null, ""),
 });
 
-// "Request Canva Edit" on an ad that has no Canva link yet.
+// One-click requests about an ad: "Request Canva Edit" on an ad with no
+// Canva link yet, and "Request a similar design" on a live ad.
 export const canvaRequestSchema = Joi.object({
   adId: Joi.string().trim().min(1).required(),
 });
