@@ -206,6 +206,23 @@ export const deleteAccountSchema = Joi.object({
   }),
 });
 
+// The billing page's "Billing details", printed on invoices. Country is an
+// ISO code (FI, NL, …); the VAT ID is optional (businesses only).
+export const billingDetailsSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(200).required(),
+  line1: Joi.string().trim().min(1).max(200).required(),
+  line2: Joi.string().trim().max(200).allow(""),
+  postalCode: Joi.string().trim().max(20).allow(""),
+  city: Joi.string().trim().min(1).max(100).required(),
+  country: Joi.string().trim().uppercase().length(2).required(),
+  vatId: Joi.string()
+    .trim()
+    .uppercase()
+    .replace(/\s+/g, "")
+    .max(40)
+    .allow(""),
+});
+
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   adUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),

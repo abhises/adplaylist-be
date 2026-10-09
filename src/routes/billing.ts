@@ -9,7 +9,8 @@ import {
   syncSubscription,
   toAccountResponse,
 } from "../lib/billing.js";
-import { renderInvoicePdf } from "../lib/invoicePdf.js";
+import { renderInvoicePdf, type InvoiceExtras } from "../lib/invoicePdf.js";
+import { taxIdTypeFor } from "../lib/taxIds.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -19,7 +20,11 @@ import {
   type AuthedRequest,
 } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
-import { checkoutSchema, checkoutReturnSchema } from "../validation/schemas.js";
+import {
+  billingDetailsSchema,
+  checkoutSchema,
+  checkoutReturnSchema,
+} from "../validation/schemas.js";
 
 const router = Router();
 
@@ -96,6 +101,11 @@ router.post(
         ...(trial ? { trial_period_days: TRIAL_DAYS } : {}),
         metadata: { account_id: String(account.id) },
       },
+      // The invoice needs the customer's address and country, and their VAT
+      // ID when they're a business; both are saved on the Stripe customer.
+      billing_address_collection: "required",
+      tax_id_collection: { enabled: true },
+      customer_update: { address: "auto", name: "auto" },
       integration_identifier: INTEGRATION_IDENTIFIER,
       success_url: `${frontendUrl()}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl()}/billing?checkout=cancelled`,
@@ -272,12 +282,147 @@ router.get(
       return res.status(404).json({ error: "Invoice not found" });
     }
 
+    const extras = await invoiceExtras(inv, customer);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="adplaylist-${inv.number ?? inv.id}.pdf"`
     );
-    renderInvoicePdf(inv, { companyName: req.account!.name, site: frontendUrl() }).pipe(res);
+    renderInvoicePdf(inv, extras).pipe(res);
+  }
+);
+
+// What the invoice doesn't carry itself: the card it was paid with, and the
+// customer's current billing details for invoices issued before they added
+// them (an invoice keeps the details it was finalized with).
+async function invoiceExtras(inv: Stripe.Invoice, customerId: string): Promise<InvoiceExtras> {
+  const stripe = getStripe();
+  const extras: InvoiceExtras = {};
+  try {
+    const { data } = await stripe.invoicePayments.list({
+      invoice: inv.id!,
+      status: "paid",
+      expand: ["data.payment.payment_intent.latest_charge"],
+    });
+    for (const p of data) {
+      const pi = p.payment.payment_intent;
+      const charge =
+        pi && typeof pi !== "string" && pi.latest_charge && typeof pi.latest_charge !== "string"
+          ? pi.latest_charge
+          : null;
+      const card = charge?.payment_method_details?.card;
+      if (card) {
+        const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
+        extras.paidWith = `${brand} •••• ${card.last4}`;
+        break;
+      }
+    }
+  } catch (err) {
+    console.warn("[billing] couldn't read how an invoice was paid", err);
+  }
+  if (!inv.customer_address || !inv.customer_tax_ids?.length) {
+    const details = await billingDetailsOf(customerId).catch(() => null);
+    if (details) {
+      extras.customerName = details.name;
+      extras.customerAddress = details.address;
+      extras.customerVatId = details.vatId;
+    }
+  }
+  return extras;
+}
+
+// The customer's billing details as kept in Stripe: name, address and VAT ID
+// (a Stripe tax ID, or for countries Stripe has no VAT type for, metadata).
+async function billingDetailsOf(customerId: string) {
+  const customer = await getStripe().customers.retrieve(customerId, { expand: ["tax_ids"] });
+  if (customer.deleted) return null;
+  const taxId = customer.tax_ids?.data[0]?.value ?? null;
+  return {
+    name: customer.name ?? null,
+    address: customer.address ?? null,
+    vatId: taxId ?? customer.metadata?.vat_id ?? null,
+  };
+}
+
+// The billing page's "Billing details": what goes on invoices.
+router.get(
+  "/details",
+  requireAuth,
+  loadAccount,
+  requireAccountOwner,
+  async (req: AuthedRequest, res) => {
+    const customer = req.account!.stripeCustomerId;
+    const details = customer ? await billingDetailsOf(customer) : null;
+    res.json({
+      details: details && {
+        name: details.name ?? "",
+        line1: details.address?.line1 ?? "",
+        line2: details.address?.line2 ?? "",
+        postalCode: details.address?.postal_code ?? "",
+        city: details.address?.city ?? "",
+        country: details.address?.country ?? "",
+        vatId: details.vatId ?? "",
+      },
+    });
+  }
+);
+
+router.put(
+  "/details",
+  requireAuth,
+  loadAccount,
+  requireAccountOwner,
+  validateBody(billingDetailsSchema),
+  async (req: AuthedRequest, res) => {
+    const customerId = req.account!.stripeCustomerId;
+    if (!customerId) return res.status(409).json({ error: "Choose a plan first." });
+    const { name, line1, line2, postalCode, city, country, vatId } = req.body;
+    const stripe = getStripe();
+
+    // A new VAT ID is checked by Stripe first, so a bad one changes nothing.
+    const existing = await stripe.customers.listTaxIds(customerId, { limit: 10 });
+    const type = vatId ? taxIdTypeFor(country) : null;
+    const unchanged = existing.data.some((t) => t.value === vatId && t.country === country);
+    if (vatId && type && !unchanged) {
+      try {
+        await stripe.customers.createTaxId(customerId, { type, value: vatId });
+        await Promise.all(
+          existing.data.map((t) => stripe.customers.deleteTaxId(customerId, t.id))
+        );
+      } catch (err) {
+        if (err instanceof Stripe.errors.StripeInvalidRequestError) {
+          return res.status(400).json({ error: `That VAT ID doesn't look right: ${err.message}` });
+        }
+        throw err;
+      }
+    } else if (!vatId || !type) {
+      await Promise.all(existing.data.map((t) => stripe.customers.deleteTaxId(customerId, t.id)));
+    }
+
+    await stripe.customers.update(customerId, {
+      name,
+      address: {
+        line1,
+        line2: line2 || "",
+        postal_code: postalCode || "",
+        city,
+        country,
+      },
+      // Only for a country Stripe has no VAT ID type for.
+      metadata: { vat_id: vatId && !type ? vatId : "" },
+    });
+    const details = await billingDetailsOf(customerId);
+    res.json({
+      details: {
+        name: details?.name ?? "",
+        line1: details?.address?.line1 ?? "",
+        line2: details?.address?.line2 ?? "",
+        postalCode: details?.address?.postal_code ?? "",
+        city: details?.address?.city ?? "",
+        country: details?.address?.country ?? "",
+        vatId: details?.vatId ?? "",
+      },
+    });
   }
 );
 
