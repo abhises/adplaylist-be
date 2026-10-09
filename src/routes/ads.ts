@@ -109,6 +109,79 @@ export function adForViewer(req: AuthedRequest, options?: { full?: boolean }) {
   };
 }
 
+// The columns the library grid and its filters use: the whole library is
+// sent at once, so the long text (creative description, primary text, …)
+// and the credited people are left out to keep it small and quick.
+const cardSelect = {
+  slug: true,
+  title: true,
+  format: true,
+  headline: true,
+  badge: true,
+  brandName: true,
+  tags: true,
+  mediaType: true,
+  swatch: true,
+  light: true,
+  category: true,
+  categories: true,
+  market: true,
+  markets: true,
+  language: true,
+  photoUrl: true,
+  platforms: true,
+  canvaUrl: true,
+  dominantColor: true,
+  videoLength: true,
+  createdAt: true,
+  subcategory: true,
+  adFormat: true,
+  imageAlt: true,
+} satisfies Prisma.AdSelect;
+
+type CardAd = Prisma.AdGetPayload<{ select: typeof cardSelect }>;
+
+// The same for every viewer: only whether a Canva copy exists is sent, never
+// the link itself.
+function toCardResponse(ad: CardAd) {
+  return {
+    id: ad.slug,
+    title: ad.title,
+    format: ad.format,
+    headline: ad.headline,
+    badge: ad.badge ?? undefined,
+    brandName: ad.brandName ?? undefined,
+    tags: splitTags(ad.tags),
+    mediaType: ad.mediaType,
+    swatch: ad.swatch,
+    light: ad.light,
+    category: ad.category,
+    categories: adCategories(ad),
+    market: ad.market,
+    markets: adMarkets(ad),
+    language: ad.language,
+    photo: ad.photoUrl ?? undefined,
+    platforms: ad.platforms ? ad.platforms.split(",") : [],
+    hasEditableCopy: !!ad.canvaUrl,
+    dominantColor: ad.dominantColor ?? undefined,
+    videoLength: ad.videoLength ?? undefined,
+    createdAt: ad.createdAt,
+    subcategory: ad.subcategory ?? undefined,
+    adFormat: ad.adFormat ?? undefined,
+    imageAlt: ad.imageAlt ?? undefined,
+  };
+}
+
+// ?view=card: the whole library for the grid (see cardSelect), without the
+// per-viewer account lookup the full list needs.
+router.get("/", (req, res, next) => {
+  if (req.query.view !== "card") return next();
+  prisma.ad
+    .findMany({ select: cardSelect, orderBy: { id: "asc" } })
+    .then((ads) => res.json({ ads: ads.map(toCardResponse) }))
+    .catch(next);
+});
+
 router.get("/", optionalAuth, loadAccount, async (req: AuthedRequest, res) => {
   const { category, market, language, mediaType, platform, q, featured } =
     req.query;
