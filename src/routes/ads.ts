@@ -77,6 +77,9 @@ export function toAdResponse(ad: AdWithPeople, { full = true } = {}) {
     live: ad.isLive,
     dominantColor: ad.dominantColor ?? undefined,
     videoLength: ad.videoLength ?? undefined,
+    video: ad.videoUrl ?? undefined,
+    videoWidth: ad.videoWidth ?? undefined,
+    videoHeight: ad.videoHeight ?? undefined,
     featured: ad.featured,
     heroPlatforms: splitList(ad.heroPlatforms),
     createdAt: ad.createdAt,
@@ -242,28 +245,38 @@ router.get("/:slug", optionalAuth, loadAccount, async (req: AuthedRequest, res) 
 
 // Download for anyone signed in: the clean creative for staff and paid
 // plans, the watermarked copy (made on first need) for everyone else. The
-// file is served as a download under the ad's keyword file name.
+// file is served as a download under the ad's keyword file name. A video ad
+// downloads as its MP4 when clean; unpaid users get its watermarked cover,
+// as videos aren't watermarked.
 router.get("/:slug/download", requireAuth, loadAccount, async (req: AuthedRequest, res) => {
   const ad = await findAdBySlug(String(req.params.slug));
-  if (!ad?.photoUrl) return res.status(404).json({ error: "This ad has no image to download" });
+  if (!ad?.photoUrl && !ad?.videoUrl) {
+    return res.status(404).json({ error: "This ad has no file to download" });
+  }
 
   const clean = !!entitlementsOfRequest(req)?.cleanDownload;
   let file: string | null;
   try {
-    file = clean ? ad.photoUrl : await watermarkedCopyOf(ad);
+    file = clean ? ad.videoUrl ?? ad.photoUrl : await watermarkedCopyOf(ad);
   } catch (err) {
     // Never fall back to the clean file for an unpaid download.
     console.error("Watermarking the download failed:", err);
     return res.status(500).json({ error: "Couldn't prepare the download. Try again." });
   }
-  if (!file) return res.status(404).json({ error: "This ad has no image to download" });
+  if (!file) return res.status(404).json({ error: "This ad has no file to download" });
 
   const url = new URL(file);
   const base = path.basename(ad.imageFileName || ad.slug, path.extname(ad.imageFileName || ""));
+  const fileName = `${base}${path.extname(url.pathname)}`;
   if (url.pathname.includes("/storage/v1/object/public/")) {
-    url.searchParams.set("download", `${base}${path.extname(url.pathname)}`);
+    url.searchParams.set("download", fileName);
   }
-  res.json({ url: url.toString(), watermarked: !clean });
+  res.json({
+    url: url.toString(),
+    watermarked: !clean,
+    fileName,
+    video: clean && !!ad.videoUrl,
+  });
 });
 
 // Deleting is admin-only (stricter than publishing, which designers can also
@@ -407,6 +420,9 @@ function toAdData(body: Record<string, unknown>) {
     isLive: !!b.isLive,
     dominantColor: b.dominantColor || null,
     videoLength: b.videoLength || null,
+    videoUrl: b.video || null,
+    videoWidth: (b.video && b.videoWidth) || null,
+    videoHeight: (b.video && b.videoHeight) || null,
     subcategory: b.subcategory || null,
     adFormat: b.adFormat || null,
     onImageText: b.onImageText || null,

@@ -45,6 +45,11 @@ model Ad {
   editable            Boolean  @default(false)
   dominantColor       String?  @map("dominant_color") @db.VarChar(30)
   videoLength         String?  @map("video_length") @db.VarChar(20)
+  // A video ad's MP4 and its pixel size. photoUrl is then its cover: the
+  // still shown in the library and before the video is played.
+  videoUrl            String?  @map("video_url") @db.VarChar(500)
+  videoWidth          Int?     @map("video_width")
+  videoHeight         Int?     @map("video_height")
   canvaUrl            String?  @map("canva_url") @db.VarChar(500)
   // A Canva copy that took extra work: shown with a "Premium" badge.
   canvaPremium        Boolean  @default(false) @map("canva_premium")
@@ -131,7 +136,10 @@ model CreativeRequest {
   userId         Int            @map("user_id")
   title          String         @db.VarChar(255)
   type           String         @default("New creative") @db.VarChar(50)
-  sizeNeeded     String?        @map("size_needed") @db.VarChar(150)
+  sizeNeeded     String?        @map("size_needed") @db.VarChar(255)
+  // What was asked for: "image", "video" or "image,video". Null on requests
+  // made before videos could be requested, and on one-click requests.
+  media          String?        @db.VarChar(20)
   neededBy       DateTime?      @map("needed_by") @db.Date
   notes          String?        @db.Text
   status         String         @default("Open") @db.VarChar(30)
@@ -150,6 +158,8 @@ model CreativeRequest {
   // requests made before credits existed). Declining refunds it.
   accountId      Int?           @map("account_id")
   creditCharged  Boolean        @default(false) @map("credit_charged")
+  // How many credits it cost: 1 for images, 2 for a video, 3 for both.
+  creditCost     Int            @default(1) @map("credit_cost")
   account        Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
   ad             Ad?            @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")

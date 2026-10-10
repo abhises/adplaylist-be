@@ -21,6 +21,7 @@ const SUPABASE_PREFIX = /^https:\/\/[a-z0-9]+\.supabase\.co\/storage\/v1\/object
 const COLUMNS = [
   ["ads", "photo_url"],
   ["ads", "watermarked_photo_url"],
+  ["ads", "video_url"],
   ["authors", "photo_url"],
   ["creative_requests", "attachment_url"],
   ["blog_posts", "cover_image_url"],

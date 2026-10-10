@@ -7,11 +7,13 @@ import { validateBody } from "../middleware/validate.js";
 import { uploadSignSchema } from "../validation/schemas.js";
 import { signUpload, uploadFile } from "../lib/storage.js";
 
-// Shared by the Add-ad creative upload (images only, capped tighter
-// client-side) and the Requests page's brief attachment (images, PDF, ZIP).
-// The server accepts the union of both and enforces the larger 25 MB cap;
-// each page applies its own stricter client-side check for its use case.
-const ALLOWED_MIME = /^(image\/(png|jpe?g|webp|gif|svg\+xml)|application\/pdf|application\/zip|application\/x-zip-compressed)$/;
+// Shared by the Add-ad creative upload (images, capped tighter client-side,
+// and MP4 videos) and the Requests page's brief attachment (images, PDF,
+// ZIP). The server accepts the union of both and enforces the larger 25 MB
+// cap on files sent through it; each page applies its own stricter
+// client-side check for its use case. Videos are bigger than that cap and
+// only go straight to storage with a signed URL.
+const ALLOWED_MIME = /^(image\/(png|jpe?g|webp|gif|svg\+xml)|video\/mp4|application\/pdf|application\/zip|application\/x-zip-compressed)$/;
 
 const upload = multer({
   storage: multer.memoryStorage(),

@@ -281,39 +281,49 @@ export async function toAccountResponse(account: Account, accountRole: string | 
 
 // --- Credits -------------------------------------------------------------
 
-// Takes one credit if the account has any, returning the ledger entry's id
-// (null if there were none). The decrement is a conditional UPDATE so two
-// requests submitted at once can't both spend the last credit.
-export async function spendCredit(accountId: number, note: string) {
+// What a request costs in credits: 1 for images, 2 for a video (3 for both).
+export const IMAGE_REQUEST_CREDITS = 1;
+export const VIDEO_REQUEST_CREDITS = 2;
+
+// Takes `amount` credits if the account has that many, returning the ledger
+// entry's id (null if it doesn't). The decrement is a conditional UPDATE so
+// two requests submitted at once can't both spend the last credits.
+export async function spendCredit(accountId: number, note: string, amount = 1) {
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.account.updateMany({
-      where: { id: accountId, credits: { gte: 1 } },
-      data: { credits: { decrement: 1 } },
+      where: { id: accountId, credits: { gte: amount } },
+      data: { credits: { decrement: amount } },
     });
     if (count !== 1) return null;
     const { credits } = await tx.account.findUniqueOrThrow({ where: { id: accountId } });
     const entry = await tx.creditTransaction.create({
-      data: { accountId, reason: "spent", delta: -1, balance: credits, note },
+      data: { accountId, reason: "spent", delta: -amount, balance: credits, note },
     });
     return entry.id;
   });
 }
 
-async function giveBack(tx: Prisma.TransactionClient, accountId: number, note: string, requestId?: number) {
+async function giveBack(
+  tx: Prisma.TransactionClient,
+  accountId: number,
+  note: string,
+  amount = 1,
+  requestId?: number
+) {
   const { credits } = await tx.account.update({
     where: { id: accountId },
-    data: { credits: { increment: 1 } },
+    data: { credits: { increment: amount } },
   });
   await tx.creditTransaction.create({
-    data: { accountId, reason: "refunded", delta: 1, balance: credits, note, requestId: requestId ?? null },
+    data: { accountId, reason: "refunded", delta: amount, balance: credits, note, requestId: requestId ?? null },
   });
 }
 
-export async function refundCredit(accountId: number, note: string) {
-  await prisma.$transaction((tx) => giveBack(tx, accountId, note));
+export async function refundCredit(accountId: number, note: string, amount = 1) {
+  await prisma.$transaction((tx) => giveBack(tx, accountId, note, amount));
 }
 
-// Gives a declined request's credit back. Clearing creditCharged in the same
+// Gives a declined request's credits back. Clearing creditCharged in the same
 // conditional update means declining twice refunds once.
 export async function refundRequestCredit(requestId: number) {
   await prisma.$transaction(async (tx) => {
@@ -324,7 +334,13 @@ export async function refundRequestCredit(requestId: number) {
       data: { creditCharged: false },
     });
     if (count === 1) {
-      await giveBack(tx, request.accountId, `Request declined: ${request.title}`, requestId);
+      await giveBack(
+        tx,
+        request.accountId,
+        `Request declined: ${request.title}`,
+        request.creditCost,
+        requestId
+      );
     }
   });
 }

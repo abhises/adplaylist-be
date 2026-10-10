@@ -100,6 +100,9 @@ export const createAdSchema = Joi.object({
   tags: Joi.array().items(tagName),
   dominantColor: Joi.string().trim().allow(null, "").max(30),
   videoLength: Joi.string().trim().allow(null, "").max(20),
+  video: Joi.string().uri().allow(null, "").max(500),
+  videoWidth: Joi.number().integer().positive().allow(null),
+  videoHeight: Joi.number().integer().positive().allow(null),
   subcategory: Joi.string().trim().allow(null, "").max(100),
   adFormat: Joi.string().trim().allow(null, "").max(50),
   onImageText: Joi.string().trim().allow(null, "").max(5000),
@@ -226,7 +229,10 @@ export const billingDetailsSchema = Joi.object({
 export const createRequestSchema = Joi.object({
   title: Joi.string().trim().min(1).required(),
   adUrl: Joi.string().trim().uri({ scheme: ["http", "https"] }).max(1000).required(),
-  sizeNeeded: Joi.string().trim().max(150).allow(null, ""),
+  // What's wanted: images, a video or both. Old clients send nothing, which
+  // means images.
+  media: Joi.array().items(Joi.string().valid("image", "video")).min(1).unique(),
+  sizeNeeded: Joi.string().trim().max(255).allow(null, ""),
   neededBy: Joi.date().allow(null, ""),
   notes: Joi.string().trim().allow(null, ""),
   attachmentUrl: Joi.string().uri().allow(null, ""),

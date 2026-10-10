@@ -7,7 +7,13 @@ import {
   requireRole,
   type AuthedRequest,
 } from "../middleware/auth.js";
-import { refundCredit, refundRequestCredit, spendCredit } from "../lib/billing.js";
+import {
+  IMAGE_REQUEST_CREDITS,
+  VIDEO_REQUEST_CREDITS,
+  refundCredit,
+  refundRequestCredit,
+  spendCredit,
+} from "../lib/billing.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
   canvaRequestSchema,
@@ -88,6 +94,7 @@ function toRequestResponse(
     adUrl: request.adUrl ?? undefined,
     deliveredUrl: request.deliveredUrl ?? undefined,
     deliveryNote: request.deliveryNote ?? undefined,
+    media: request.media ? request.media.split(",") : undefined,
     sizeNeeded: request.sizeNeeded ?? undefined,
     neededBy: request.neededBy ?? undefined,
     notes: request.notes ?? undefined,
@@ -112,8 +119,9 @@ function toRequestResponse(
             : undefined,
         }
       : undefined,
-    // Whether a credit paid for it (declining refunds it).
+    // Whether credits paid for it (declining refunds them), and how many.
     creditCharged: request.creditCharged,
+    creditCost: request.creditCost,
     createdAt: request.createdAt,
   };
 }
@@ -137,7 +145,9 @@ async function announceNewRequest(id: number) {
           ? "Canva edit request"
           : request.type === SIMILAR_DESIGN
             ? "Similar design request"
-            : "New request"
+            : request.media?.includes("video")
+              ? "New video request"
+              : "New request"
       } from ${from}`,
       body: request.title,
       link: `/admin/requests?request=${request.id}`,
@@ -181,8 +191,9 @@ router.get(
   }
 );
 
-// A customer's request spends one of their account's shared credits; staff
-// requests are free. If saving fails the credit goes straight back.
+// A customer's request spends their account's shared credits: 1 for images,
+// 2 for a video, 3 for both. Staff requests are free. If saving fails the
+// credits go straight back.
 router.post(
   "/",
   requireAuth,
@@ -192,15 +203,24 @@ router.post(
   async (req: AuthedRequest, res) => {
     const { title, adUrl, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
       req.body;
+    const media: string[] = req.body.media ?? ["image"];
+    const cost =
+      (media.includes("image") ? IMAGE_REQUEST_CREDITS : 0) +
+      (media.includes("video") ? VIDEO_REQUEST_CREDITS : 0);
 
     const account = req.userRole === "client" ? req.account ?? null : null;
     if (req.userRole === "client" && !account) {
       return res.status(402).json({ error: "Choose a plan to request ads.", upgrade: true });
     }
-    const spentEntryId = account ? await spendCredit(account.id, `Request: ${title}`) : null;
+    const spentEntryId = account
+      ? await spendCredit(account.id, `Request: ${title}`, cost)
+      : null;
     if (account && !spentEntryId) {
       return res.status(402).json({
-        error: "You're out of credits.",
+        error:
+          cost > 1 && account.credits > 0
+            ? `This request needs ${cost} credits and you have ${account.credits}.`
+            : "You're out of credits.",
         upgrade: true,
         outOfCredits: true,
       });
@@ -213,8 +233,10 @@ router.post(
           userId: req.userId!,
           accountId: account?.id ?? null,
           creditCharged: !!account,
+          creditCost: cost,
           title,
           type: "New creative",
+          media: media.join(","),
           adUrl,
           sizeNeeded: sizeNeeded ?? null,
           neededBy: neededBy ? new Date(neededBy) : null,
@@ -225,7 +247,7 @@ router.post(
         },
       });
     } catch (err) {
-      if (account) await refundCredit(account.id, `Request failed to save: ${title}`);
+      if (account) await refundCredit(account.id, `Request failed to save: ${title}`, cost);
       throw err;
     }
     if (spentEntryId) {
