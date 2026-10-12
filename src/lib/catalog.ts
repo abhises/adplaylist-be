@@ -16,8 +16,8 @@ import {
   type PlanId,
 } from "./plans.js";
 
-// Per plan, keyed by credit volume (the tier's fixed id): prices in cents and
-// the credits a month the tier gives (editable; starts equal to the volume).
+// Per plan, keyed by volume (the tier's fixed id): prices in cents and the
+// credits a month the tier gives (editable).
 export type TierPrice = { monthly: number; yearly: number; credits: number };
 export type PriceTable = Record<PlanId, Record<number, TierPrice>>;
 
@@ -30,7 +30,7 @@ function defaults(): PriceTable {
     PLAN_IDS.map((plan) => [
       plan,
       Object.fromEntries(
-        Object.entries(PLANS[plan].prices).map(([v, p]) => [Number(v), { ...p, credits: Number(v) }])
+        Object.entries(PLANS[plan].prices).map(([v, p]) => [Number(v), { ...p }])
       ),
     ])
   ) as PriceTable;
@@ -58,8 +58,8 @@ export async function getPriceTable(): Promise<PriceTable> {
 
 // The credits a month an account on this plan + volume gets.
 export async function tierCredits(plan: string, volume: number) {
-  if (!isPlanId(plan)) return volume;
-  return (await getPriceTable())[plan][volume]?.credits ?? volume;
+  if (!isPlanId(plan)) return 0;
+  return (await getPriceTable())[plan][volume]?.credits ?? 0;
 }
 
 async function ensureProduct(stripe: Stripe, id: string, name: string) {

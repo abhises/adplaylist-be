@@ -3,6 +3,7 @@ import type { Account, Prisma, User } from "../generated/prisma/client.js";
 import { notifyAdmins } from "./realtime.js";
 import { prisma } from "./prisma.js";
 import { tierCredits } from "./catalog.js";
+import { getCreditSettings } from "./creditSettings.js";
 import {
   ALL_ENTITLEMENTS,
   PAST_DUE_GRACE_DAYS,
@@ -238,6 +239,7 @@ export async function toAccountResponse(account: Account, accountRole: string | 
   const plan = isPlanId(account.plan) ? account.plan : "starter";
   const def = PLANS[plan];
   const creditsPerMonth = await tierCredits(plan, account.creditVolume);
+  const { trialCredits } = await getCreditSettings();
   return {
     id: account.id,
     name: account.name,
@@ -261,7 +263,7 @@ export async function toAccountResponse(account: Account, accountRole: string | 
       account.status === "expired"
         ? 0
         : account.status === "trial" || cancelledInTrial(account)
-          ? def.trialCredits
+          ? trialCredits[plan]
           : creditsPerMonth,
     // Monthly plans refill on renewal; yearly ones on nextRefillAt.
     nextRefillAt:
@@ -281,14 +283,12 @@ export async function toAccountResponse(account: Account, accountRole: string | 
 
 // --- Credits -------------------------------------------------------------
 
-// What a request costs in credits: 1 for images, 2 for a video (3 for both).
-export const IMAGE_REQUEST_CREDITS = 1;
-export const VIDEO_REQUEST_CREDITS = 2;
+// What each kind of request costs is in creditSettings.ts.
 
 // Takes `amount` credits if the account has that many, returning the ledger
 // entry's id (null if it doesn't). The decrement is a conditional UPDATE so
 // two requests submitted at once can't both spend the last credits.
-export async function spendCredit(accountId: number, note: string, amount = 1) {
+export async function spendCredit(accountId: number, note: string, amount: number) {
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.account.updateMany({
       where: { id: accountId, credits: { gte: amount } },
@@ -307,7 +307,7 @@ async function giveBack(
   tx: Prisma.TransactionClient,
   accountId: number,
   note: string,
-  amount = 1,
+  amount: number,
   requestId?: number
 ) {
   const { credits } = await tx.account.update({
@@ -319,7 +319,7 @@ async function giveBack(
   });
 }
 
-export async function refundCredit(accountId: number, note: string, amount = 1) {
+export async function refundCredit(accountId: number, note: string, amount: number) {
   await prisma.$transaction((tx) => giveBack(tx, accountId, note, amount));
 }
 
@@ -432,18 +432,19 @@ export async function syncSubscription(subscriptionId: string): Promise<Account 
 
   if (status === "trial") {
     data.trialEndsAt = fromUnix(sub.trial_end);
-    // A trial with a card gets the plan's trial credits (2 for Pro and
-    // Agency, 0 for Starter) when it starts. Moving to a plan with more
+    // A trial with a card gets the plan's trial credits (creditSettings.ts)
+    // when it starts. Moving to a plan with more
     // trial credits mid-trial tops up the difference, so switching plans
     // can't be used to reset spent credits.
     const note = `Trial credits · ${planLabel(plan, await tierCredits(plan, volume))}`;
     const invoiceId =
       typeof sub.latest_invoice === "string" ? sub.latest_invoice : sub.latest_invoice?.id ?? null;
+    const { trialCredits } = await getCreditSettings();
     if (account.stripeSubscriptionId !== sub.id) {
-      data.credits = PLANS[plan].trialCredits;
+      data.credits = trialCredits[plan];
       grant = { reason: "trial", note, invoiceId };
     } else if (account.plan !== plan && isPlanId(account.plan)) {
-      const extra = PLANS[plan].trialCredits - PLANS[account.plan].trialCredits;
+      const extra = trialCredits[plan] - trialCredits[account.plan];
       if (extra > 0) {
         data.credits = account.credits + extra;
         grant = { reason: "trial", note, topUp: true, invoiceId };

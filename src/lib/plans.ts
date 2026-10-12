@@ -15,9 +15,11 @@ export type AccountStatus =
 
 type PlanDef = {
   name: string;
-  // Credit volume → price in cents.
-  prices: Record<number, { monthly: number; yearly: number }>;
-  trialCredits: number;
+  // Tier → price in cents and the credits a month it gives. A tier's key is
+  // its fixed id (in Stripe product ids and accounts' creditVolume); it was
+  // the number of ads a month before credits were worth a fifth of an ad.
+  // Trial credits and what requests cost are in creditSettings.ts.
+  prices: Record<number, { monthly: number; yearly: number; credits: number }>;
   maxBrands: number;
   maxSeats: number;
   turnaround: string | null;
@@ -26,8 +28,7 @@ type PlanDef = {
 export const PLANS: Record<PlanId, PlanDef> = {
   starter: {
     name: "Starter",
-    prices: { 0: { monthly: 1500, yearly: 14400 } },
-    trialCredits: 0,
+    prices: { 0: { monthly: 1500, yearly: 14400, credits: 10 } },
     maxBrands: 1,
     maxSeats: 1,
     turnaround: null,
@@ -35,12 +36,11 @@ export const PLANS: Record<PlanId, PlanDef> = {
   pro: {
     name: "Pro",
     prices: {
-      10: { monthly: 4900, yearly: 47040 },
-      20: { monthly: 9500, yearly: 91200 },
-      30: { monthly: 13900, yearly: 133440 },
-      40: { monthly: 17900, yearly: 171840 },
+      10: { monthly: 4900, yearly: 47040, credits: 50 },
+      20: { monthly: 9500, yearly: 91200, credits: 100 },
+      30: { monthly: 13900, yearly: 133440, credits: 150 },
+      40: { monthly: 17900, yearly: 171840, credits: 200 },
     },
-    trialCredits: 2,
     maxBrands: 2,
     maxSeats: 2,
     turnaround: "3 days",
@@ -48,12 +48,11 @@ export const PLANS: Record<PlanId, PlanDef> = {
   agency: {
     name: "Agency",
     prices: {
-      50: { monthly: 21500, yearly: 206400 },
-      70: { monthly: 28900, yearly: 277440 },
-      100: { monthly: 39900, yearly: 383040 },
-      150: { monthly: 49900, yearly: 479040 },
+      50: { monthly: 21500, yearly: 206400, credits: 250 },
+      70: { monthly: 28900, yearly: 277440, credits: 350 },
+      100: { monthly: 39900, yearly: 383040, credits: 500 },
+      150: { monthly: 49900, yearly: 479040, credits: 750 },
     },
-    trialCredits: 2,
     maxBrands: 5,
     maxSeats: 5,
     turnaround: "48 hours",
@@ -100,9 +99,7 @@ export function productId(plan: PlanId, volume: number) {
 }
 
 export function productName(plan: PlanId, credits: number) {
-  return plan === "starter"
-    ? "Adplaylist Starter"
-    : `Adplaylist ${PLANS[plan].name} – ${credits} credits/month`;
+  return `Adplaylist ${PLANS[plan].name} – ${credits} credits/month`;
 }
 
 // What an account may do right now, from its plan and status. Staff (no
@@ -144,7 +141,8 @@ export function entitlementsFor(plan: PlanId, status: AccountStatus): Entitlemen
     // a paid period (see entitlementsOf for a trial cancelled before paying).
     cleanDownload: status !== "trial",
     editableCopies: plan !== "starter",
-    requests: plan !== "starter",
+    // Every plan has credits to spend on requests.
+    requests: true,
     videoRequests: plan === "agency",
     brandKit: plan === "agency",
   };

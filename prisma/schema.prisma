@@ -158,8 +158,13 @@ model CreativeRequest {
   // requests made before credits existed). Declining refunds it.
   accountId      Int?           @map("account_id")
   creditCharged  Boolean        @default(false) @map("credit_charged")
-  // How many credits it cost: 1 for images, 2 for a video, 3 for both.
-  creditCost     Int            @default(1) @map("credit_cost")
+  // How many credits it cost (what a decline gives back), at the costs in
+  // lib/creditSettings.ts when it was made.
+  creditCost     Int            @default(0) @map("credit_cost")
+  // Sizes wanted beyond the first, each charged as an extra size.
+  extraSizes     Int            @default(0) @map("extra_sizes")
+  // On a revision: the delivered request it asks to change.
+  revisionOfId   Int?           @map("revision_of_id")
   account        Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_requests_account")
   ad             Ad?            @relation(fields: [adId], references: [id], onUpdate: NoAction, map: "fk_requests_ad")
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_requests_user")
@@ -339,7 +344,8 @@ model Account {
   name                 String                 @db.VarChar(255)
   // starter | pro | agency
   plan                 String                 @default("starter") @db.VarChar(20)
-  // Credits per month the plan includes: 0 for Starter, 10–40 Pro, 50–150 Agency.
+  // The plan's tier, by its fixed id in lib/plans.ts (0 for Starter, 10–40
+  // Pro, 50–150 Agency). The credits a month it gives are in plan_prices.
   creditVolume         Int                    @default(0) @map("credit_volume")
   // monthly | yearly
   billingCycle         String                 @default("monthly") @map("billing_cycle") @db.VarChar(10)
@@ -413,15 +419,27 @@ model PlanPrice {
   volume       Int
   monthlyCents Int      @map("monthly_cents")
   yearlyCents  Int      @map("yearly_cents")
-  // Credits a month this tier gives. Starts equal to `volume`, which stays
-  // the tier's fixed id (Stripe product, accounts' creditVolume); admins can
-  // change the credits without moving anyone to another tier.
+  // Credits a month this tier gives. `volume` is the tier's fixed id (Stripe
+  // product, accounts' creditVolume); admins can change the credits without
+  // moving anyone to another tier.
   credits      Int
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
   updatedById  Int?     @map("updated_by_id")
 
   @@id([plan, volume])
   @@map("plan_prices")
+}
+
+// What requests cost in credits and how many credits a trial gets, where an
+// admin has changed them from the defaults in lib/creditSettings.ts. Keys
+// are cost_<kind> and trial_<plan>.
+model CreditSetting {
+  key         String   @id @db.VarChar(40)
+  value       Int
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  updatedById Int?     @map("updated_by_id")
+
+  @@map("credit_settings")
 }
 
 // Every price a plan + credit volume has had: a row per change, so admins can

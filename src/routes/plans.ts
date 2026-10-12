@@ -1,15 +1,16 @@
 import { Router } from "express";
 import { getPriceTable, type PriceTable } from "../lib/catalog.js";
+import { getCreditSettings, type CreditSettings } from "../lib/creditSettings.js";
 import { PLANS, PLAN_IDS } from "../lib/plans.js";
 
 const router = Router();
 
 // The public price list (pricing page, billing page), in dollars.
-export function toPlansResponse(table: PriceTable) {
+export function toPlansResponse(table: PriceTable, settings: CreditSettings) {
   return PLAN_IDS.map((id) => ({
     id,
     name: PLANS[id].name,
-    trialCredits: PLANS[id].trialCredits,
+    trialCredits: settings.trialCredits[id],
     maxBrands: PLANS[id].maxBrands,
     maxSeats: PLANS[id].maxSeats,
     turnaround: PLANS[id].turnaround,
@@ -22,8 +23,17 @@ export function toPlansResponse(table: PriceTable) {
   }));
 }
 
+// The plans and what each kind of request costs in credits.
+export async function priceListResponse() {
+  const settings = await getCreditSettings();
+  return {
+    plans: toPlansResponse(await getPriceTable(), settings),
+    creditCosts: settings.costs,
+  };
+}
+
 router.get("/", async (_req, res) => {
-  res.json({ plans: toPlansResponse(await getPriceTable()) });
+  res.json(await priceListResponse());
 });
 
 export default router;

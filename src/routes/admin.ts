@@ -4,13 +4,15 @@ import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
-import { getPriceTable, setPlanPrice } from "../lib/catalog.js";
+import { setPlanPrice } from "../lib/catalog.js";
+import { setCreditSettings } from "../lib/creditSettings.js";
 import { getStripe } from "../lib/billing.js";
 import { isValidVolume } from "../lib/plans.js";
-import { toPlansResponse } from "./plans.js";
+import { priceListResponse } from "./plans.js";
 import { toOnboardingResponse } from "./profile.js";
 import {
   createUserSchema,
+  creditSettingsSchema,
   idParamSchema,
   planPricesSchema,
   updateUserDetailsSchema,
@@ -217,12 +219,23 @@ router.put("/plan-prices", validateBody(planPricesSchema), async (req: AuthedReq
       const what = `${c.plan}${c.volume ? ` ${c.volume}` : ""}`;
       return res.status(502).json({
         error: `Saved ${saved} of ${changes.length}; ${what} failed: ${err instanceof Error ? err.message : "unknown error"}`,
-        plans: toPlansResponse(await getPriceTable()),
+        ...(await priceListResponse()),
       });
     }
   }
-  res.json({ plans: toPlansResponse(await getPriceTable()) });
+  res.json(await priceListResponse());
 });
+
+// What requests cost in credits and what each plan's trial gets. Applies
+// from now on: requests already made keep what they were charged.
+router.put(
+  "/credit-settings",
+  validateBody(creditSettingsSchema),
+  async (req: AuthedRequest, res) => {
+    await setCreditSettings(req.body, req.userId!);
+    res.json(await priceListResponse());
+  }
+);
 
 // Every price each plan + volume has had, newest first, with who set it.
 router.get("/plan-prices/history", async (_req, res) => {

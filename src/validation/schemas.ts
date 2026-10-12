@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { CREDIT_COST_KEYS } from "../lib/creditSettings.js";
 import { PLAN_IDS, isValidVolume } from "../lib/plans.js";
 
 // Only "client" and "designer" are selectable at signup — "admin" can only
@@ -233,6 +234,8 @@ export const createRequestSchema = Joi.object({
   // means images.
   media: Joi.array().items(Joi.string().valid("image", "video")).min(1).unique(),
   sizeNeeded: Joi.string().trim().max(255).allow(null, ""),
+  // Sizes wanted beyond the first; each is charged as an extra size.
+  extraSizes: Joi.number().integer().min(0).max(20),
   neededBy: Joi.date().allow(null, ""),
   notes: Joi.string().trim().allow(null, ""),
   attachmentUrl: Joi.string().uri().allow(null, ""),
@@ -243,6 +246,13 @@ export const createRequestSchema = Joi.object({
 // Canva link yet, and "Request a similar design" on a live ad.
 export const canvaRequestSchema = Joi.object({
   adId: Joi.string().trim().min(1).required(),
+});
+
+// Changes wanted to a delivered request.
+export const revisionRequestSchema = Joi.object({
+  notes: Joi.string().trim().min(1).max(5000).required(),
+  attachmentUrl: Joi.string().uri().allow(null, ""),
+  attachmentName: Joi.string().trim().allow(null, ""),
 });
 
 export const deliverRequestSchema = Joi.object({
@@ -378,6 +388,15 @@ export const planPriceSchema = Joi.object({
   monthly: priceDollars.required(),
   yearly: priceDollars.required(),
 });
+
+// What requests cost in credits and what each plan's trial gets, from the
+// pricing admin. Only what's sent changes.
+const creditAmount = Joi.number().integer().min(0).max(10000);
+
+export const creditSettingsSchema = Joi.object({
+  costs: Joi.object(Object.fromEntries(CREDIT_COST_KEYS.map((key) => [key, creditAmount]))),
+  trialCredits: Joi.object(Object.fromEntries(PLAN_IDS.map((plan) => [plan, creditAmount]))),
+}).or("costs", "trialCredits");
 
 // Several prices saved together from the pricing admin's one Save button.
 export const planPricesSchema = Joi.object({

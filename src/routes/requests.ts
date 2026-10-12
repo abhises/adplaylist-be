@@ -7,13 +7,8 @@ import {
   requireRole,
   type AuthedRequest,
 } from "../middleware/auth.js";
-import {
-  IMAGE_REQUEST_CREDITS,
-  VIDEO_REQUEST_CREDITS,
-  refundCredit,
-  refundRequestCredit,
-  spendCredit,
-} from "../lib/billing.js";
+import { refundCredit, refundRequestCredit, spendCredit } from "../lib/billing.js";
+import { getCreditSettings } from "../lib/creditSettings.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
   canvaRequestSchema,
@@ -21,6 +16,7 @@ import {
   declineRequestSchema,
   deliverRequestSchema,
   idParamSchema,
+  revisionRequestSchema,
 } from "../validation/schemas.js";
 import { toAdResponse } from "./ads.js";
 import { broadcastRequest, notifyStaff, notifyUser } from "../lib/realtime.js";
@@ -31,6 +27,19 @@ const router = Router();
 
 const CANVA_EDIT = "Canva edit";
 const SIMILAR_DESIGN = "Similar design";
+const REVISION = "Revision";
+
+// What's said when an account can't afford a request.
+function outOfCredits(cost: number, balance: number) {
+  return {
+    error:
+      balance > 0
+        ? `This request needs ${cost} credits and you have ${balance}.`
+        : "You're out of credits.",
+    upgrade: true,
+    outOfCredits: true,
+  };
+}
 
 function siteUrl() {
   return (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -96,6 +105,8 @@ function toRequestResponse(
     deliveryNote: request.deliveryNote ?? undefined,
     media: request.media ? request.media.split(",") : undefined,
     sizeNeeded: request.sizeNeeded ?? undefined,
+    extraSizes: request.extraSizes,
+    revisionOfId: request.revisionOfId ?? undefined,
     neededBy: request.neededBy ?? undefined,
     notes: request.notes ?? undefined,
     status: request.status,
@@ -145,7 +156,9 @@ async function announceNewRequest(id: number) {
           ? "Canva edit request"
           : request.type === SIMILAR_DESIGN
             ? "Similar design request"
-            : request.media?.includes("video")
+            : request.type === REVISION
+              ? "Revision request"
+              : request.media?.includes("video")
               ? "New video request"
               : "New request"
       } from ${from}`,
@@ -191,9 +204,9 @@ router.get(
   }
 );
 
-// A customer's request spends their account's shared credits: 1 for images,
-// 2 for a video, 3 for both. Staff requests are free. If saving fails the
-// credits go straight back.
+// A customer's request spends their account's shared credits: the cost of an
+// image ad, a video ad or both, plus each extra size (creditSettings.ts).
+// Staff requests are free. If saving fails the credits go straight back.
 router.post(
   "/",
   requireAuth,
@@ -204,9 +217,12 @@ router.post(
     const { title, adUrl, sizeNeeded, neededBy, notes, attachmentUrl, attachmentName } =
       req.body;
     const media: string[] = req.body.media ?? ["image"];
+    const extraSizes: number = req.body.extraSizes ?? 0;
+    const { costs } = await getCreditSettings();
     const cost =
-      (media.includes("image") ? IMAGE_REQUEST_CREDITS : 0) +
-      (media.includes("video") ? VIDEO_REQUEST_CREDITS : 0);
+      (media.includes("image") ? costs.image : 0) +
+      (media.includes("video") ? costs.video : 0) +
+      extraSizes * costs.extraSize;
 
     const account = req.userRole === "client" ? req.account ?? null : null;
     if (req.userRole === "client" && !account) {
@@ -216,14 +232,7 @@ router.post(
       ? await spendCredit(account.id, `Request: ${title}`, cost)
       : null;
     if (account && !spentEntryId) {
-      return res.status(402).json({
-        error:
-          cost > 1 && account.credits > 0
-            ? `This request needs ${cost} credits and you have ${account.credits}.`
-            : "You're out of credits.",
-        upgrade: true,
-        outOfCredits: true,
-      });
+      return res.status(402).json(outOfCredits(cost, account.credits));
     }
 
     let created;
@@ -239,6 +248,7 @@ router.post(
           media: media.join(","),
           adUrl,
           sizeNeeded: sizeNeeded ?? null,
+          extraSizes,
           neededBy: neededBy ? new Date(neededBy) : null,
           notes: notes ?? null,
           status: "Open",
@@ -263,14 +273,13 @@ router.post(
 );
 
 // A request about one of our ads, sent with one click from its page: costs
-// a customer one credit, like any request, and shows in their credit
-// history. Asking twice for the same ad while the first is still open
+// a customer `cost` credits and shows in their credit history. Asking twice for the same ad while the first is still open
 // doesn't charge again (alreadyRequested).
 async function requestForAd(
   req: AuthedRequest,
   res: Response,
   ad: Ad,
-  { type, title, notes }: { type: string; title: string; notes: string }
+  { type, title, notes, cost }: { type: string; title: string; notes: string; cost: number }
 ) {
   const account = req.userRole === "client" ? req.account ?? null : null;
   if (req.userRole === "client" && !account) {
@@ -287,13 +296,9 @@ async function requestForAd(
   });
   if (open) return res.json({ request: toRequestResponse(open, ad), alreadyRequested: true });
 
-  const spentEntryId = account ? await spendCredit(account.id, title) : null;
+  const spentEntryId = account ? await spendCredit(account.id, title, cost) : null;
   if (account && !spentEntryId) {
-    return res.status(402).json({
-      error: "You're out of credits.",
-      upgrade: true,
-      outOfCredits: true,
-    });
+    return res.status(402).json(outOfCredits(cost, account.credits));
   }
 
   let created;
@@ -303,6 +308,7 @@ async function requestForAd(
         userId: req.userId!,
         accountId: account?.id ?? null,
         creditCharged: !!account,
+        creditCost: cost,
         title,
         type,
         notes,
@@ -312,7 +318,7 @@ async function requestForAd(
       },
     });
   } catch (err) {
-    if (account) await refundCredit(account.id, `Request failed to save: ${title}`);
+    if (account) await refundCredit(account.id, `Request failed to save: ${title}`, cost);
     throw err;
   }
   if (spentEntryId) {
@@ -344,6 +350,7 @@ router.post(
       type: CANVA_EDIT,
       title: `Canva edit: ${ad.title}`,
       notes: "Add an editable Canva copy of this ad.",
+      cost: (await getCreditSettings()).costs.canvaEdit,
     });
   }
 );
@@ -363,7 +370,86 @@ router.post(
       type: SIMILAR_DESIGN,
       title: `Similar design: ${ad.title}`,
       notes: "Design an ad similar to this live ad for us.",
+      cost: (await getCreditSettings()).costs.similarDesign,
     });
+  }
+);
+
+// Asks for changes to a delivered request: a new request linked to it,
+// costing an image revision, a video revision or both, by what was delivered.
+router.post(
+  "/:id/revision",
+  requireAuth,
+  loadAccount,
+  requireEntitlement("requests"),
+  validateParams(idParamSchema),
+  validateBody(revisionRequestSchema),
+  async (req: AuthedRequest, res) => {
+    const account = req.userRole === "client" ? req.account ?? null : null;
+    if (req.userRole === "client" && !account) {
+      return res.status(402).json({ error: "Choose a plan to request ads.", upgrade: true });
+    }
+    // Their own request, or one from their company's account.
+    const original = await prisma.creativeRequest.findFirst({
+      where: {
+        id: Number(req.params.id),
+        OR: [{ userId: req.userId! }, ...(account ? [{ accountId: account.id }] : [])],
+      },
+    });
+    if (!original) return res.status(404).json({ error: "Request not found" });
+    if (original.status !== "Delivered") {
+      return res.status(409).json({ error: "Only a delivered request can be revised." });
+    }
+
+    const media = original.media ? original.media.split(",") : ["image"];
+    const { costs } = await getCreditSettings();
+    const cost =
+      (media.includes("image") ? costs.imageRevision : 0) +
+      (media.includes("video") ? costs.videoRevision : 0);
+    // A revision of a revision is still about the first request's creative.
+    const base = original.title.replace(/^Revision: /, "");
+    const title = `Revision: ${base}`;
+
+    const spentEntryId = account ? await spendCredit(account.id, title, cost) : null;
+    if (account && !spentEntryId) {
+      return res.status(402).json(outOfCredits(cost, account.credits));
+    }
+
+    let created;
+    try {
+      created = await prisma.creativeRequest.create({
+        data: {
+          userId: req.userId!,
+          accountId: account?.id ?? null,
+          creditCharged: !!account,
+          creditCost: cost,
+          title,
+          type: REVISION,
+          media: media.join(","),
+          revisionOfId: original.id,
+          adId: original.adId,
+          // What to change: the creative that was delivered.
+          adUrl: original.deliveredUrl ?? original.adUrl,
+          notes: req.body.notes,
+          status: "Open",
+          attachmentUrl: req.body.attachmentUrl || null,
+          attachmentName: req.body.attachmentName || null,
+        },
+        include: { ad: true },
+      });
+    } catch (err) {
+      if (account) await refundCredit(account.id, `Request failed to save: ${title}`, cost);
+      throw err;
+    }
+    if (spentEntryId) {
+      await prisma.creditTransaction.update({
+        where: { id: spentEntryId },
+        data: { requestId: created.id },
+      });
+    }
+
+    await announceNewRequest(created.id);
+    res.status(201).json({ request: toRequestResponse(created, created.ad) });
   }
 );
 
