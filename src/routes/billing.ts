@@ -106,6 +106,10 @@ router.post(
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
       customer_update: { address: "auto", name: "auto" },
+      // We sell and invoice directly. Stripe accounts with Managed Payments
+      // on by default would otherwise make Stripe the seller, which also
+      // needs a tax code on every product.
+      managed_payments: { enabled: false },
       integration_identifier: INTEGRATION_IDENTIFIER,
       success_url: `${frontendUrl()}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl()}/billing?checkout=cancelled`,
