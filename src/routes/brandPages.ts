@@ -1,8 +1,19 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import { Prisma, type BrandPage } from "../generated/prisma/client.js";
+import {
+  lockBrandProfileAds,
+  normalizeBrandProfile,
+  type BrandProfile,
+} from "../lib/brandProfile.js";
 import { prisma } from "../lib/prisma.js";
 import { cleanHtml } from "../lib/sanitize.js";
-import { requireAuth, requirePermission } from "../middleware/auth.js";
+import {
+  optionalAuth,
+  requireAuth,
+  requirePermission,
+  type AuthedRequest,
+} from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import { brandPageSchema, idParamSchema } from "../validation/schemas.js";
 
@@ -22,18 +33,27 @@ function toBrandPageData(body: Record<string, unknown>) {
     slug: (body.slug as string) || slugify(brandName),
     heading: (body.heading as string) || `${brandName} ads`,
     bodyHtml: cleanHtml((body.bodyHtml as string) ?? ""),
+    profile: normalizeBrandProfile(body.profile) ?? Prisma.DbNull,
     ctaLabel: (body.ctaLabel as string) || "Sign up",
     published: !!body.published,
   };
 }
 
-function toBrandPageResponse(page: BrandPage) {
+const newAccessKey = () => crypto.randomBytes(12).toString("base64url");
+
+// `showAds: false` is what visitors get: the page with its ads locked, and
+// without the key that unlocks them.
+function toBrandPageResponse(page: BrandPage, { showAds = true } = {}) {
+  const profile = (page.profile as BrandProfile | null) ?? undefined;
   return {
     id: page.id,
     slug: page.slug,
     brandName: page.brandName,
     heading: page.heading,
     bodyHtml: page.bodyHtml,
+    profile: profile && !showAds ? lockBrandProfileAds(profile) : profile,
+    adsLocked: !!profile && !showAds,
+    accessKey: showAds ? (page.accessKey ?? undefined) : undefined,
     ctaLabel: page.ctaLabel,
     published: page.published,
     createdAt: page.createdAt,
@@ -47,15 +67,26 @@ function isSlugConflict(err: unknown) {
   );
 }
 
+function keyMatches(page: BrandPage, key: unknown) {
+  if (!page.accessKey || typeof key !== "string") return false;
+  const a = Buffer.from(page.accessKey);
+  const b = Buffer.from(key);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 // Public: what /brands/:slug renders. Drafts stay hidden until published.
-router.get("/public/:slug", async (req, res) => {
+// A CSV page's ads are for signed-in visitors; the brand itself gets them
+// through the ?key= on the link in its outreach email.
+router.get("/public/:slug", optionalAuth, async (req: AuthedRequest, res) => {
   const page = await prisma.brandPage.findUnique({
     where: { slug: String(req.params.slug) },
   });
   if (!page || !page.published) {
     return res.status(404).json({ error: "Page not found" });
   }
-  res.json({ page: toBrandPageResponse(page) });
+  const showAds = !!req.userId || keyMatches(page, req.query.key);
+  const { accessKey: _key, ...response } = toBrandPageResponse(page, { showAds });
+  res.json({ page: response });
 });
 
 router.use(requireAuth, requirePermission("brandPages"));
@@ -64,7 +95,7 @@ router.get("/", async (_req, res) => {
   const pages = await prisma.brandPage.findMany({
     orderBy: { updatedAt: "desc" },
   });
-  res.json({ pages: pages.map(toBrandPageResponse) });
+  res.json({ pages: pages.map((page) => toBrandPageResponse(page)) });
 });
 
 router.get("/:id", validateParams(idParamSchema), async (req, res) => {
@@ -78,7 +109,7 @@ router.get("/:id", validateParams(idParamSchema), async (req, res) => {
 router.post("/", validateBody(brandPageSchema), async (req, res) => {
   try {
     const page = await prisma.brandPage.create({
-      data: toBrandPageData(req.body),
+      data: { ...toBrandPageData(req.body), accessKey: newAccessKey() },
     });
     res.status(201).json({ page: toBrandPageResponse(page) });
   } catch (err) {
@@ -100,7 +131,11 @@ router.put(
     try {
       const page = await prisma.brandPage.update({
         where: { id },
-        data: toBrandPageData(req.body),
+        // Pages from before access keys get theirs on the next save.
+        data: {
+          ...toBrandPageData(req.body),
+          accessKey: existing.accessKey ?? newAccessKey(),
+        },
       });
       res.json({ page: toBrandPageResponse(page) });
     } catch (err) {

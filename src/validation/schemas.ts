@@ -320,6 +320,8 @@ export const brandPageSchema = Joi.object({
     .allow(""),
   heading: Joi.string().trim().max(255).allow(""),
   bodyHtml: Joi.string().allow(""),
+  // A brand CSV's content; cleaned by normalizeBrandProfile, not here.
+  profile: Joi.object().unknown(true).allow(null),
   ctaLabel: Joi.string().trim().max(100).allow(""),
   published: Joi.boolean(),
 });

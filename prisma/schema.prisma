@@ -274,13 +274,18 @@ model OnboardingAnswers {
 }
 
 // Admin-written landing pages for outreach, e.g. /brands/samsung. The body
-// is admin-authored HTML, sanitized on write before it's stored.
+// is admin-authored HTML, sanitized on write before it's stored. A page made
+// from a brand CSV has `profile` instead (lib/brandProfile.ts) and is laid
+// out by the frontend; its ads are only sent to signed-in visitors and to
+// links carrying `accessKey`, which is what goes in the outreach email.
 model BrandPage {
   id        Int      @id @default(autoincrement())
   slug      String   @unique(map: "brand_pages_slug") @db.VarChar(150)
   brandName String   @map("brand_name") @db.VarChar(150)
   heading   String   @db.VarChar(255)
   bodyHtml  String   @map("body_html") @db.LongText
+  profile   Json?
+  accessKey String?  @map("access_key") @db.VarChar(32)
   ctaLabel  String   @default("Sign up") @map("cta_label") @db.VarChar(100)
   published Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
