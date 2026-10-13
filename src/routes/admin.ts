@@ -1,4 +1,5 @@
 import { Router } from "express";
+import Stripe from "stripe";
 import bcrypt from "bcryptjs";
 import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
@@ -15,6 +16,8 @@ import {
   creditSettingsSchema,
   idParamSchema,
   planPricesSchema,
+  promoCodeActiveSchema,
+  promoCodeSchema,
   updateUserDetailsSchema,
   updateUserRoleSchema,
 } from "../validation/schemas.js";
@@ -266,6 +269,103 @@ router.get("/plan-prices/history", async (_req, res) => {
       changedAt: r.changedAt.toISOString(),
     })),
   });
+});
+
+// ---- Promo codes: discount codes customers type in at checkout ----
+//
+// Stripe keeps them, as a coupon (the discount) plus a promotion code (the
+// word typed in). Each code made here gets a coupon of its own.
+
+function toPromoCode(p: Stripe.PromotionCode) {
+  const coupon = p.promotion.coupon && typeof p.promotion.coupon !== "string" ? p.promotion.coupon : null;
+  return {
+    id: p.id,
+    code: p.code,
+    active: p.active,
+    percentOff: coupon?.percent_off ?? null,
+    // Stripe amounts are in cents; our prices are all in USD.
+    amountOff: coupon?.amount_off != null ? coupon.amount_off / 100 : null,
+    duration: coupon?.duration ?? null,
+    months: coupon?.duration_in_months ?? null,
+    timesRedeemed: p.times_redeemed,
+    maxRedemptions: p.max_redemptions,
+    expiresAt: p.expires_at ? new Date(p.expires_at * 1000) : null,
+    firstTimeOnly: p.restrictions.first_time_transaction,
+    createdAt: new Date(p.created * 1000),
+  };
+}
+
+// Stripe's own message for a request it turned down (e.g. a code that's
+// already in use) is the useful one to show.
+function stripeRejection(err: unknown) {
+  return err instanceof Stripe.errors.StripeInvalidRequestError ? err.message : null;
+}
+
+router.get("/promo-codes", async (_req, res) => {
+  const { data } = await getStripe().promotionCodes.list({
+    limit: 100,
+    expand: ["data.promotion.coupon"],
+  });
+  // A code whose coupon was deleted in Stripe can never be used again.
+  const usable = data.filter((p) => {
+    const coupon = p.promotion.coupon;
+    return !!coupon && (typeof coupon === "string" || !("deleted" in coupon && coupon.deleted));
+  });
+  res.json({ promoCodes: usable.map(toPromoCode) });
+});
+
+router.post("/promo-codes", validateBody(promoCodeSchema), async (req, res) => {
+  const { code, percentOff, duration, months, maxRedemptions, expiresOn, firstTimeOnly } = req.body;
+  // Usable through the end of the chosen day (UTC).
+  const expiresAt = expiresOn ? Date.parse(`${String(expiresOn).slice(0, 10)}T23:59:59Z`) : null;
+  if (expiresAt !== null && expiresAt <= Date.now()) {
+    return res.status(400).json({ error: "The expiry date must be in the future." });
+  }
+
+  const stripe = getStripe();
+  const coupon = await stripe.coupons.create({
+    name: code,
+    percent_off: percentOff,
+    duration,
+    ...(duration === "repeating" ? { duration_in_months: months } : {}),
+  });
+  try {
+    const created = await stripe.promotionCodes.create({
+      promotion: { type: "coupon", coupon: coupon.id },
+      code,
+      ...(maxRedemptions ? { max_redemptions: maxRedemptions } : {}),
+      ...(expiresAt ? { expires_at: Math.floor(expiresAt / 1000) } : {}),
+      ...(firstTimeOnly ? { restrictions: { first_time_transaction: true } } : {}),
+      expand: ["promotion.coupon"],
+    });
+    res.status(201).json({ promoCode: toPromoCode(created) });
+  } catch (err) {
+    // No code without its coupon, and no coupon left over without a code.
+    await stripe.coupons.del(coupon.id).catch(() => {});
+    const message = stripeRejection(err);
+    if (message) return res.status(400).json({ error: message });
+    throw err;
+  }
+});
+
+// Turns a code off (it stops working at checkout; subscriptions already
+// using it keep their discount) or back on.
+router.put("/promo-codes/:id", validateBody(promoCodeActiveSchema), async (req, res) => {
+  const id = String(req.params.id);
+  if (!/^promo_[A-Za-z0-9]+$/.test(id)) {
+    return res.status(404).json({ error: "Promo code not found" });
+  }
+  try {
+    const updated = await getStripe().promotionCodes.update(id, {
+      active: req.body.active,
+      expand: ["promotion.coupon"],
+    });
+    res.json({ promoCode: toPromoCode(updated) });
+  } catch (err) {
+    const message = stripeRejection(err);
+    if (message) return res.status(400).json({ error: message });
+    throw err;
+  }
 });
 
 // ---- Transactions: every customer's payments and credit movements ----

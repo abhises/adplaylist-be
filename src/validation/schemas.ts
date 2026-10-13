@@ -410,6 +410,35 @@ export const creditSettingsSchema = Joi.object({
   ),
 }).or("costs", "trialCredits", "referralRewards");
 
+// A discount code from Admin → Promo codes, e.g. PLAYLIST10: 10% off the
+// first 3 months. `months` only applies to (and is required for) a
+// "repeating" discount.
+export const promoCodeSchema = Joi.object({
+  code: Joi.string()
+    .trim()
+    .uppercase()
+    .pattern(/^[A-Z0-9_-]{3,40}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "The code can only have letters, numbers, - and _ (3 to 40 characters)",
+    }),
+  percentOff: Joi.number().integer().min(1).max(100).required(),
+  duration: Joi.string().valid("once", "repeating", "forever").required(),
+  months: Joi.when("duration", {
+    is: "repeating",
+    then: Joi.number().integer().min(1).max(36).required(),
+    otherwise: Joi.any().strip(),
+  }),
+  maxRedemptions: Joi.number().integer().min(1).max(1000000).allow(null),
+  // "YYYY-MM-DD": the last day the code can be used.
+  expiresOn: Joi.string().isoDate().allow(null, ""),
+  firstTimeOnly: Joi.boolean().default(false),
+});
+
+export const promoCodeActiveSchema = Joi.object({
+  active: Joi.boolean().required(),
+});
+
 // Several prices saved together from the pricing admin's one Save button.
 export const planPricesSchema = Joi.object({
   changes: Joi.array()

@@ -106,6 +106,9 @@ router.post(
       // ID when they're a business; both are saved on the Stripe customer.
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
+      // Shows "Add promotion code" on the payment page, for the discount
+      // codes admins create at /admin/promo-codes.
+      allow_promotion_codes: true,
       customer_update: { address: "auto", name: "auto" },
       // We sell and invoice directly. Stripe accounts with Managed Payments
       // on by default would otherwise make Stripe the seller, which also
