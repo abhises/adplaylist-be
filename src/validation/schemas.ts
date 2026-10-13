@@ -1,6 +1,13 @@
 import Joi from "joi";
-import { CREDIT_COST_KEYS } from "../lib/creditSettings.js";
+import { CREDIT_COST_KEYS, REFERRAL_REWARD_KEYS } from "../lib/creditSettings.js";
 import { PLAN_IDS, isValidVolume } from "../lib/plans.js";
+
+// The code from a referral link (/?ref=<code>), sent along when signing up.
+// One that doesn't look like a code is dropped rather than failing sign-up.
+const referralCode = Joi.alternatives().try(
+  Joi.string().trim().uppercase().pattern(/^[A-Z0-9]{6,12}$/),
+  Joi.any().strip()
+);
 
 // Only "client" and "designer" are selectable at signup — "admin" can only
 // be granted later via the admin panel, never by a self-registering user.
@@ -9,6 +16,7 @@ export const registerSchema = Joi.object({
   email: Joi.string().trim().email().required(),
   password: Joi.string().min(8).required(),
   role: Joi.string().valid("client", "designer").default("client"),
+  referralCode,
 });
 
 export const loginSchema = Joi.object({
@@ -18,6 +26,7 @@ export const loginSchema = Joi.object({
 
 export const googleAuthSchema = Joi.object({
   credential: Joi.string().required(),
+  referralCode,
 });
 
 // Ads store tags comma-separated, so a tag name can't contain a comma.
@@ -389,14 +398,17 @@ export const planPriceSchema = Joi.object({
   yearly: priceDollars.required(),
 });
 
-// What requests cost in credits and what each plan's trial gets, from the
-// pricing admin. Only what's sent changes.
+// What requests cost in credits, what each plan's trial gets and what a
+// referral earns, from the pricing admin. Only what's sent changes.
 const creditAmount = Joi.number().integer().min(0).max(10000);
 
 export const creditSettingsSchema = Joi.object({
   costs: Joi.object(Object.fromEntries(CREDIT_COST_KEYS.map((key) => [key, creditAmount]))),
   trialCredits: Joi.object(Object.fromEntries(PLAN_IDS.map((plan) => [plan, creditAmount]))),
-}).or("costs", "trialCredits");
+  referralRewards: Joi.object(
+    Object.fromEntries(REFERRAL_REWARD_KEYS.map((key) => [key, creditAmount]))
+  ),
+}).or("costs", "trialCredits", "referralRewards");
 
 // Several prices saved together from the pricing admin's one Save button.
 export const planPricesSchema = Joi.object({

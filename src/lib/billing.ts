@@ -4,6 +4,7 @@ import { notifyAdmins } from "./realtime.js";
 import { prisma } from "./prisma.js";
 import { tierCredits } from "./catalog.js";
 import { getCreditSettings } from "./creditSettings.js";
+import { settleReferrals } from "./referrals.js";
 import {
   ALL_ENTITLEMENTS,
   PAST_DUE_GRACE_DAYS,
@@ -79,7 +80,8 @@ export type CreditReason =
   | "spent"
   | "refunded"
   | "expired"
-  | "adjustment";
+  | "adjustment"
+  | "referral";
 
 type Grant = {
   reason: CreditReason;
@@ -459,7 +461,8 @@ export async function syncSubscription(subscriptionId: string): Promise<Account 
 }
 
 // A paid invoice is what refills credits — so a past-due account gets none
-// until it pays. The $0 invoice that opens a trial doesn't count.
+// until it pays. The $0 invoice that opens a trial doesn't count. A paid
+// invoice is also what earns a referral its bonus credits (lib/referrals.ts).
 export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const subRef = invoice.parent?.subscription_details?.subscription;
   if (!subRef) return;
@@ -467,7 +470,12 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
 
   const account = await syncSubscription(subscriptionId);
   if (!account || account.status === "expired") return;
-  if (account.lastRefillInvoiceId === invoice.id) return;
+  if (account.lastRefillInvoiceId === invoice.id) {
+    // Already refilled; a referral bonus that didn't go through then gets
+    // another go.
+    await settleReferrals(account, invoice);
+    return;
+  }
 
   const isTrialStart =
     invoice.billing_reason === "subscription_create" && invoice.amount_paid === 0;
@@ -533,6 +541,8 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
       link: "/admin",
     });
   }
+  // After the refill, which resets the balance: a bonus is added on top.
+  await settleReferrals(account, invoice);
 }
 
 // Pulls the account's current subscription and latest invoice straight from

@@ -10,6 +10,7 @@ import {
   toAccountResponse,
 } from "../lib/billing.js";
 import { renderInvoicePdf, type InvoiceExtras } from "../lib/invoicePdf.js";
+import { reverseReferralForPayment } from "../lib/referrals.js";
 import { taxIdTypeFor } from "../lib/taxIds.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { prisma } from "../lib/prisma.js";
@@ -166,9 +167,11 @@ router.get("/credits", requireAuth, loadAccount, async (req: AuthedRequest, res)
 
   res.json({
     totals: {
-      // Everything ever granted: trial, monthly refills, upgrades, and any
-      // balance carried in from before the ledger existed.
-      received: sum("trial") + sum("refill") + sum("upgrade") + sum("adjustment"),
+      // Everything ever granted: trial, monthly refills, upgrades, referral
+      // bonuses (less any taken back), and any balance carried in from
+      // before the ledger existed.
+      received:
+        sum("trial") + sum("refill") + sum("upgrade") + sum("adjustment") + sum("referral"),
       // Spent on requests, less those refunded when a request was declined.
       used: -(sum("spent") + sum("refunded")),
       // Unused credits that reset at a refill or when the plan ended.
@@ -538,6 +541,31 @@ async function handleEvent(event: Stripe.Event) {
       const invoice = await getStripe().invoices.retrieve(id);
       const subRef = invoice.parent?.subscription_details?.subscription;
       if (subRef) await syncSubscription(typeof subRef === "string" ? subRef : subRef.id);
+      break;
+    }
+    // A referral's bonus credits are taken back if the payment that earned
+    // them is refunded in full or disputed.
+    case "charge.refunded": {
+      const charge = event.data.object;
+      if (charge.refunded) {
+        await reverseReferralForPayment(
+          charge.customer,
+          charge.payment_intent,
+          "The referred account's first payment was refunded"
+        );
+      }
+      break;
+    }
+    case "charge.dispute.created": {
+      const dispute = event.data.object;
+      const charge = await getStripe().charges.retrieve(
+        typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id
+      );
+      await reverseReferralForPayment(
+        charge.customer,
+        charge.payment_intent,
+        "The referred account's first payment was disputed"
+      );
       break;
     }
   }

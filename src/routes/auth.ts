@@ -8,6 +8,7 @@ import { googleAuthSchema, loginSchema, registerSchema } from "../validation/sch
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
 import { sendWelcomeEmail } from "../lib/mailer.js";
 import { welcomeBack } from "../lib/reactivation.js";
+import { attachReferral } from "../lib/referrals.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { notifyAdmins } from "../lib/realtime.js";
 import { userResponseFor } from "./profile.js";
@@ -50,7 +51,7 @@ function signToken(userId: number) {
 }
 
 router.post("/register", validateBody(registerSchema), async (req, res) => {
-  const { fullName, email, password, role } = req.body;
+  const { fullName, email, password, role, referralCode } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing?.deactivatedAt) {
@@ -78,6 +79,7 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
 
   if (role === "client") sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
   announceSignup(user, "email");
+  await attachReferral(user.accountId, referralCode);
 
   res.status(201).json({ token, user: await userResponseFor(user.id) });
 });
@@ -155,6 +157,7 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
   if (isNewUser) {
     sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
     announceSignup(user, "Google");
+    await attachReferral(user.accountId, req.body.referralCode);
   }
 
   res.json({ token, user: await userResponseFor(user.id), welcomeBack: returning });

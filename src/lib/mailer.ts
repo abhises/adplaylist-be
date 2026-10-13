@@ -292,6 +292,91 @@ The Adplaylist team`;
   return { subject, text, html };
 }
 
+// Sent to a referrer when the friend they referred pays for the first time
+// and the bonus credits land in their balance.
+export function sendReferralRewardEmail(
+  to: string,
+  fullName: string,
+  credits: number,
+  friendName: string
+) {
+  if (!mailConfigured()) return;
+  const { subject, text, html } = referralRewardEmail(fullName, credits, friendName);
+  sendMail({ to, subject, text, html }).catch((err) =>
+    console.error("Referral reward email failed:", (err as Error).message)
+  );
+}
+
+export function referralRewardEmail(fullName: string, credits: number, friendName: string) {
+  const site = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  const firstName = fullName.trim().split(/\s+/)[0] || "there";
+  const subject = `You earned ${credits} bonus credits on Adplaylist`;
+  const lead = `${friendName} subscribed with your referral link, so we've added ${credits} bonus credits to your balance. Like all credits, they're there until your next refill.`;
+  const cta = { href: `${site}/referrals`, label: "See your referrals" };
+
+  const text = `Hi ${firstName},
+
+${lead}
+
+${cta.label}: ${cta.href}
+
+Know someone else who'd use Adplaylist? Your link works as often as you like.
+
+The Adplaylist team`;
+
+  const font = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#F3F2F0;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(lead)}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F2F0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+          <tr>
+            <td style="background:#EC3016;padding:36px 40px 44px 40px;font-family:${font};color:#ffffff;">
+              <div style="font-size:13px;font-weight:800;letter-spacing:3px;text-transform:uppercase;">Adplaylist</div>
+              <div style="margin-top:40px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;">Thanks for spreading the word, ${escapeHtml(firstName)}</div>
+              <h1 style="margin:12px 0 0 0;font-size:44px;line-height:1;font-weight:800;letter-spacing:-1.5px;color:#ffffff;">+${credits} credits.</h1>
+              <p style="margin:20px 0 0 0;font-size:17px;line-height:1.5;color:#ffffff;">${escapeHtml(lead)}</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+                <tr>
+                  <td style="background:#161514;">
+                    <a href="${cta.href}" style="display:inline-block;padding:16px 28px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">${cta.label} &rarr;</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#ffffff;padding:32px 40px 40px 40px;font-family:${font};font-size:15px;line-height:1.55;color:#55524e;">
+              Know someone else who'd use Adplaylist? Your link works as often as you like.<br><br>
+              <span style="color:#161514;font-weight:700;">The Adplaylist team</span>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:24px 40px;font-family:${font};font-size:12px;line-height:1.6;color:#8a8783;">
+              You're receiving this because someone joined <a href="${site}" style="color:#8a8783;">adplaylist.com</a> through your referral link.<br>
+              &copy; ${new Date().getFullYear()} Adplaylist
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 // Sent when the creative team delivers a client's request: the link to the
 // finished ad and the team's note, in the welcome email's design.
 export function deliveryEmail({

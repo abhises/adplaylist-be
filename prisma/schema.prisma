@@ -369,11 +369,16 @@ model Account {
   // Set when an owner who deleted their account comes back: no new free
   // trial, and the app stays locked until they subscribe (which clears it).
   paymentRequired      Boolean                @default(false) @map("payment_required")
+  // The code in this account's referral link (/?ref=<code>), made the first
+  // time the link is asked for.
+  referralCode         String?                @unique(map: "accounts_referral_code") @map("referral_code") @db.VarChar(12)
   createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamp(0)
   users                User[]
   creativeRequests     CreativeRequest[]
   creditTransactions   CreditTransaction[]
   cancellations        CancellationFeedback[]
+  referralsMade        Referral[]             @relation("ReferralReferrer")
+  referredBy           Referral?              @relation("ReferralReferred")
 
   @@map("accounts")
 }
@@ -385,6 +390,7 @@ model CreditTransaction {
   id              Int      @id @default(autoincrement())
   accountId       Int      @map("account_id")
   // trial | refill | upgrade | spent | refunded | expired | adjustment
+  // | referral
   reason          String   @db.VarChar(20)
   delta           Int
   balance         Int
@@ -399,6 +405,34 @@ model CreditTransaction {
   @@index([accountId, createdAt], map: "credit_tx_account_created")
   @@index([stripeInvoiceId], map: "credit_tx_invoice")
   @@map("credit_transactions")
+}
+
+// An account that signed up through another account's referral link. Both
+// get bonus credits (amounts in lib/creditSettings.ts) once the referred
+// account pays its first invoice; see lib/referrals.ts for the rules.
+model Referral {
+  id                Int       @id @default(autoincrement())
+  referrerAccountId Int       @map("referrer_account_id")
+  // An account can only have been referred once.
+  referredAccountId Int       @unique(map: "referrals_referred_account") @map("referred_account_id")
+  // pending (signed up, hasn't paid yet) → rewarded, or ineligible (it paid
+  // but a rule blocked the reward; `note` says which). A rewarded one becomes
+  // reversed when that payment is refunded or an admin takes it back; a
+  // pending one an admin stops is cancelled.
+  status            String    @default("pending") @db.VarChar(20)
+  note              String?   @db.VarChar(255)
+  // What each side was given (0 until rewarded).
+  referrerCredits   Int       @default(0) @map("referrer_credits")
+  referredCredits   Int       @default(0) @map("referred_credits")
+  // The referred account's first paid invoice, which earned the reward.
+  stripeInvoiceId   String?   @map("stripe_invoice_id") @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  rewardedAt        DateTime? @map("rewarded_at") @db.Timestamp(0)
+  referrer          Account   @relation("ReferralReferrer", fields: [referrerAccountId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_referrals_referrer")
+  referred          Account   @relation("ReferralReferred", fields: [referredAccountId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_referrals_referred")
+
+  @@index([referrerAccountId, status], map: "referrals_referrer_status")
+  @@map("referrals")
 }
 
 // Stripe webhook event ids already handled, so a redelivered event can't
@@ -432,7 +466,7 @@ model PlanPrice {
 
 // What requests cost in credits and how many credits a trial gets, where an
 // admin has changed them from the defaults in lib/creditSettings.ts. Keys
-// are cost_<kind> and trial_<plan>.
+// are cost_<kind>, trial_<plan> and referral_<who>.
 model CreditSetting {
   key         String   @id @db.VarChar(40)
   value       Int

@@ -1,5 +1,6 @@
-// What things cost in credits and how many credits a trial gets: defaults
-// here, edited by admins (credit_settings table, /admin/pricing).
+// What things cost in credits, how many credits a trial gets and what a
+// referral earns: defaults here, edited by admins (credit_settings table,
+// /admin/pricing).
 import { prisma } from "./prisma.js";
 import { PLAN_IDS, type PlanId } from "./plans.js";
 
@@ -14,9 +15,14 @@ export const CREDIT_COST_KEYS = [
 ] as const;
 export type CreditCostKey = (typeof CREDIT_COST_KEYS)[number];
 
+// Bonus credits for a referral, given when the referred account first pays.
+export const REFERRAL_REWARD_KEYS = ["referrer", "referrerStarter", "friend"] as const;
+export type ReferralRewardKey = (typeof REFERRAL_REWARD_KEYS)[number];
+
 export type CreditSettings = {
   costs: Record<CreditCostKey, number>;
   trialCredits: Record<PlanId, number>;
+  referralRewards: Record<ReferralRewardKey, number>;
 };
 
 export const DEFAULT_CREDIT_SETTINGS: CreditSettings = {
@@ -34,10 +40,20 @@ export const DEFAULT_CREDIT_SETTINGS: CreditSettings = {
     similarDesign: 5,
   },
   trialCredits: { starter: 5, pro: 10, agency: 10 },
+  referralRewards: {
+    // To the referrer, when their friend pays for Pro or Agency.
+    referrer: 50,
+    // To the referrer, when their friend pays for Starter (which is too
+    // cheap to carry the full reward).
+    referrerStarter: 10,
+    // To the friend, on top of their first month's credits.
+    friend: 10,
+  },
 };
 
 const costRow = (key: CreditCostKey) => `cost_${key}`;
 const trialRow = (plan: PlanId) => `trial_${plan}`;
+const referralRow = (key: ReferralRewardKey) => `referral_${key}`;
 
 const CACHE_MS = 60 * 1000;
 let cached: { settings: CreditSettings; at: number } | null = null;
@@ -61,15 +77,26 @@ export async function getCreditSettings(): Promise<CreditSettings> {
         stored.get(trialRow(plan)) ?? DEFAULT_CREDIT_SETTINGS.trialCredits[plan],
       ])
     ) as CreditSettings["trialCredits"],
+    referralRewards: Object.fromEntries(
+      REFERRAL_REWARD_KEYS.map((key) => [
+        key,
+        stored.get(referralRow(key)) ?? DEFAULT_CREDIT_SETTINGS.referralRewards[key],
+      ])
+    ) as CreditSettings["referralRewards"],
   };
   cached = { settings, at: Date.now() };
   return settings;
 }
 
-// An admin's change. Applies to what's requested (and trials started) from
-// now on: requests already made keep the cost they were charged.
+// An admin's change. Applies to what's requested (and trials started, and
+// referrals rewarded) from now on: requests already made keep the cost they
+// were charged.
 export async function setCreditSettings(
-  changes: { costs?: Partial<CreditSettings["costs"]>; trialCredits?: Partial<CreditSettings["trialCredits"]> },
+  changes: {
+    costs?: Partial<CreditSettings["costs"]>;
+    trialCredits?: Partial<CreditSettings["trialCredits"]>;
+    referralRewards?: Partial<CreditSettings["referralRewards"]>;
+  },
   adminId: number
 ) {
   const rows: { key: string; value: number }[] = [
@@ -81,6 +108,9 @@ export async function setCreditSettings(
       key: trialRow(plan),
       value: changes.trialCredits![plan]!,
     })),
+    ...REFERRAL_REWARD_KEYS.filter((key) => changes.referralRewards?.[key] !== undefined).map(
+      (key) => ({ key: referralRow(key), value: changes.referralRewards![key]! })
+    ),
   ];
   await prisma.$transaction(
     rows.map(({ key, value }) =>

@@ -226,8 +226,9 @@ router.put("/plan-prices", validateBody(planPricesSchema), async (req: AuthedReq
   res.json(await priceListResponse());
 });
 
-// What requests cost in credits and what each plan's trial gets. Applies
-// from now on: requests already made keep what they were charged.
+// What requests cost in credits, what each plan's trial gets and what a
+// referral earns. Applies from now on: requests already made keep what they
+// were charged.
 router.put(
   "/credit-settings",
   validateBody(creditSettingsSchema),
@@ -390,7 +391,7 @@ router.get("/transactions/payments", async (req, res) => {
 
 // Every credit movement across all accounts in the range, with daily totals
 // of credits granted, used (net of refunds) and expired.
-const GRANT_REASONS = ["trial", "refill", "upgrade", "adjustment"];
+const GRANT_REASONS = ["trial", "refill", "upgrade", "adjustment", "referral"];
 
 router.get("/transactions/credits", async (req, res) => {
   const { days, start, keys } = rangeFrom(req.query);

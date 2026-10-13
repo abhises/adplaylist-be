@@ -23,12 +23,14 @@ export function toPlansResponse(table: PriceTable, settings: CreditSettings) {
   }));
 }
 
-// The plans and what each kind of request costs in credits.
+// The plans, what each kind of request costs in credits and what a referral
+// earns.
 export async function priceListResponse() {
   const settings = await getCreditSettings();
   return {
     plans: toPlansResponse(await getPriceTable(), settings),
     creditCosts: settings.costs,
+    referralRewards: settings.referralRewards,
   };
 }
 
