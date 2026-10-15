@@ -9,6 +9,8 @@ export type BrandProfileAd = {
   live: boolean;
   label?: string;
   cta?: string;
+  // Shown next to "Sponsored", e.g. Story or Carousel.
+  format?: string;
   // A finished creative. Without one the ad is drawn from the fields below.
   image?: string;
   alt?: string;
@@ -37,6 +39,8 @@ export type BrandProfile = {
   intro?: string;
   recommendPct?: string;
   reviewCount?: string;
+  // A short credential shown with the reviews, e.g. "Licensed WA & OR".
+  highlight?: string;
   contact?: { website?: string; mobile?: string; email?: string; messenger?: string };
   colors?: { primary?: string; secondary?: string };
   ads?: BrandProfileAd[];
@@ -66,6 +70,7 @@ export type BrandProfile = {
 const AD_TEXT_KEYS = [
   "label",
   "cta",
+  "format",
   "alt",
   "eyebrow",
   "headline",
@@ -141,6 +146,7 @@ export function normalizeBrandProfile(input: unknown): BrandProfile | null {
     intro: text(raw.intro),
     recommendPct: text(raw.recommendPct, 10),
     reviewCount: text(raw.reviewCount, 10),
+    highlight: text(raw.highlight, 100),
     contact: group({
       website: text(obj(raw.contact).website, 255),
       mobile: text(obj(raw.contact).mobile, 50),
@@ -220,6 +226,7 @@ export function lockBrandProfileAds(profile: BrandProfile): BrandProfile {
       const locked: BrandProfileAd = { live: ad.live, locked: true };
       if (ad.label) locked.label = ad.label;
       if (ad.cta) locked.cta = ad.cta;
+      if (ad.format) locked.format = ad.format;
       return locked;
     });
   }
