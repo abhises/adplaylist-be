@@ -66,10 +66,12 @@ function quoted(enquiry: ContactEnquiry) {
     .join("\n> ")}`;
 }
 
-// Public: the landing page's "Talk to us" form. The team is told by email
-// (reply-to the sender), and the enquiry waits in Admin → Contact.
+// Public: the landing page's "Talk to us" form, and a brand page's "Request
+// ads". The team is told by email (reply-to the sender), and the enquiry
+// waits in Admin → Contact.
 router.post("/", validateBody(contactSchema), async (req, res) => {
-  const { name, email, company, volume, message, website } = req.body;
+  const { name, email, company, volume, message, website, source } = req.body;
+  const fromBrandPage = source === "brand-page";
   // A filled honeypot is a bot: answer as if it worked and keep nothing.
   if (website) return res.status(201).json({ ok: true });
 
@@ -91,9 +93,13 @@ router.post("/", validateBody(contactSchema), async (req, res) => {
   });
   res.status(201).json({ ok: true });
 
+  const title = fromBrandPage
+    ? `New ad request from the ${company} brand page`
+    : `New enquiry from ${name}${company ? ` (${company})` : ""}`;
+
   void notifyAdmins({
     type: "contact.created",
-    title: `New enquiry from ${name}${company ? ` (${company})` : ""}`,
+    title,
     body: message.length > 200 ? `${message.slice(0, 200)}…` : message,
     link: "/admin/contact",
   });
@@ -105,9 +111,11 @@ router.post("/", validateBody(contactSchema), async (req, res) => {
     sendMail({
       to: notifyTo,
       replyTo: `${name} <${email}>`,
-      subject: `New enquiry from ${name}${company ? ` (${company})` : ""}`,
+      subject: title,
       text: [
-        "A new custom volume / custom price enquiry came in.",
+        fromBrandPage
+          ? `A new ad request came in from the ${company} brand page.`
+          : "A new custom volume / custom price enquiry came in.",
         "",
         `Name: ${name}`,
         `Email: ${email}`,

@@ -357,6 +357,9 @@ export const contactSchema = Joi.object({
   volume: Joi.string().trim().max(50).allow(null, ""),
   message: Joi.string().trim().min(1).max(5000).required(),
   website: Joi.string().allow(null, ""),
+  // Where it was sent from: the landing page's form when left out, or a
+  // brand page's "Request ads".
+  source: Joi.string().valid("brand-page"),
 });
 
 export const contactReplySchema = Joi.object({
