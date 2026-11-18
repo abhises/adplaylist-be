@@ -55,7 +55,6 @@ jobs:
           host: ${{ secrets.DEPLOY_SSH_HOST }}
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script_stop: true
           envs: TAG
           script: |
             set -e
@@ -72,9 +71,12 @@ jobs:
             docker compose up -d --no-deps api
 
             # Wait for the new container to report healthy; roll back if not.
-            for i in $(seq 1 30); do
-              s=$(docker inspect -f '{{.State.Health.Status}}' adplaylist-api)
-              [ "$s" = healthy ] && break
+            # (No script_stop on this action: it adds an exit check after every
+            # line, which ended the script on the first "starting" status.)
+            s=starting
+            for i in $(seq 1 40); do
+              s=$(docker inspect -f '{{.State.Health.Status}}' adplaylist-api || echo missing)
+              if [ "$s" = healthy ]; then break; fi
               sleep 3
             done
             if [ "$s" != healthy ]; then
