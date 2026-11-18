@@ -16,6 +16,14 @@ import { normalizeAdContent, type AdContent } from "../lib/adContent.js";
 import { watermarkedCopyOf } from "../lib/watermark.js";
 import { toAuthorSummary } from "../lib/authors.js";
 import { createAdSchema } from "../validation/schemas.js";
+import {
+  libraryFacets,
+  matchesFilters,
+  parseLibraryFilters,
+  parsePaging,
+  seededShuffle,
+  visitorPreview,
+} from "../lib/libraryQuery.js";
 
 const router = Router();
 
@@ -188,6 +196,40 @@ router.get("/", (req, res, next) => {
   prisma.ad
     .findMany({ select: cardSelect, orderBy: { id: "asc" } })
     .then((ads) => res.json({ ads: ads.map(toCardResponse) }))
+    .catch(next);
+});
+
+// The library grid, one page at a time: filtered, counted, shuffled and
+// paged here so the browser only gets the ads it shows. `seed` keeps one
+// visit's random order while paging. Visitors (no sign-in) get the preview
+// instead of pages: a few ads per picked platform and a locked teaser.
+router.get("/library", optionalAuth, (req: AuthedRequest, res, next) => {
+  const filters = parseLibraryFilters(req.query);
+  const { page, pageSize } = parsePaging(req.query);
+  const seed = Number(req.query.seed);
+  prisma.ad
+    .findMany({ select: cardSelect, orderBy: { id: "asc" } })
+    .then((rows) => {
+      const cards = rows.map(toCardResponse);
+      const all = Number.isFinite(seed) ? seededShuffle(cards, seed) : cards;
+      const now = Date.now();
+      const filtered = all.filter((ad) => matchesFilters(ad, filters, now));
+      const facets = libraryFacets(all);
+      if (!req.userId) {
+        const { shown, locked } = visitorPreview(filtered, all, filters.platforms);
+        return res.json({ ads: shown, locked, total: filtered.length, page: 1, pageSize, facets });
+      }
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const current = Math.min(page, totalPages);
+      const start = (current - 1) * pageSize;
+      res.json({
+        ads: filtered.slice(start, start + pageSize),
+        total: filtered.length,
+        page: current,
+        pageSize,
+        facets,
+      });
+    })
     .catch(next);
 });
 
