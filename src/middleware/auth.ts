@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import type { Account } from "../generated/prisma/client.js";
 import { entitlementsOf, loadAccountForUser } from "../lib/billing.js";
 import { prisma } from "../lib/prisma.js";
+import { sessionToken, userIdFromToken } from "../lib/session.js";
 import type { Entitlements } from "../lib/plans.js";
 
 export interface AuthedRequest extends Request {
@@ -14,53 +14,25 @@ export interface AuthedRequest extends Request {
   accountRole?: string | null;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-function bearerUserId(req: Request): number | null {
-  const header = req.headers.authorization;
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token || !JWT_SECRET) return null;
-  try {
-    return (jwt.verify(token, JWT_SECRET) as { userId: number }).userId;
-  } catch {
-    return null;
-  }
-}
-
-// For routes visitors can also reach: sets userId when a valid token is
-// sent, and carries on either way.
-export function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunction) {
-  const userId = bearerUserId(req);
+// For routes visitors can also reach: sets userId when a valid session
+// cookie is sent, and carries on either way.
+export async function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunction) {
+  const userId = await userIdFromToken(sessionToken(req));
   if (userId) req.userId = userId;
   next();
 }
 
+// The session is checked against the database on every request, so signing
+// out everywhere or deleting the account takes effect straight away, on
+// every device, not just when the token expires.
 export async function requireAuth(
   req: AuthedRequest,
   res: Response,
   next: NextFunction
 ) {
-  const header = req.headers.authorization;
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-
-  if (!token || !JWT_SECRET) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-
-  let userId: number;
-  try {
-    userId = (jwt.verify(token, JWT_SECRET) as { userId: number }).userId;
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
-  // A deleted (deactivated) account's sessions stop working straight away,
-  // on every device, not just when the token expires.
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { deactivatedAt: true },
-  });
-  if (!user || user.deactivatedAt) {
-    return res.status(401).json({ error: "This account has been deleted." });
+  const userId = await userIdFromToken(sessionToken(req));
+  if (!userId) {
+    return res.status(401).json({ error: "Not signed in" });
   }
   req.userId = userId;
   next();

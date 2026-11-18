@@ -215,6 +215,10 @@ model User {
   // Set when the user deletes their account from the profile page: they
   // can't sign in any more, but their data is kept (nothing is erased).
   deactivatedAt       DateTime?              @map("deactivated_at") @db.Timestamp(0)
+  // Stamped into every sign-in token. Raising it signs the user out on every
+  // device at once (Sign out everywhere, account deleted): older tokens no
+  // longer match and are refused.
+  tokenVersion        Int                    @default(0) @map("token_version")
   account             Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_account")
   creativeRequests    CreativeRequest[]
   savedAds            SavedAd[]

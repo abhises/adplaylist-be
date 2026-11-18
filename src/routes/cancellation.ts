@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import type { Account } from "../generated/prisma/client.js";
 import { getStripe, refreshFromStripe, toAccountResponse } from "../lib/billing.js";
 import { prisma } from "../lib/prisma.js";
+import { endSession } from "../lib/session.js";
 import { notifyAdmins } from "../lib/realtime.js";
 import {
   loadAccount,
@@ -143,8 +144,10 @@ router.post(
 
     await prisma.user.update({
       where: { id: req.userId! },
-      data: { deactivatedAt: new Date() },
+      // Signs them out on every device too.
+      data: { deactivatedAt: new Date(), tokenVersion: { increment: 1 } },
     });
+    endSession(res);
     const user = await record(req, {
       offerPercent: offer?.percent ?? null,
       outcome: "deactivated",

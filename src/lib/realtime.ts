@@ -1,11 +1,11 @@
 import type { Server as HttpServer } from "node:http";
-import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import type { Notification, Prisma, User } from "../generated/prisma/client.js";
 import { prisma } from "./prisma.js";
+import { sessionToken, userIdFromToken } from "./session.js";
 
-// Live updates over Socket.IO. A signed-in browser connects with its login
-// token and joins a room of its own; designers and admins also join "staff",
+// Live updates over Socket.IO. A signed-in browser connects with its session
+// cookie and joins a room of its own; designers and admins also join "staff",
 // and admins "admin". New notifications are pushed to their audience's room.
 const STAFF_ROLES = ["designer", "admin"];
 const STAFF_ROOM = "staff";
@@ -15,7 +15,7 @@ const userRoom = (userId: number) => `user:${userId}`;
 let io: Server | null = null;
 
 export function initRealtime(server: HttpServer, corsOrigins: string[]) {
-  io = new Server(server, { cors: { origin: corsOrigins } });
+  io = new Server(server, { cors: { origin: corsOrigins, credentials: true } });
 
   // Varnish sits in front of the API on Cloudways; the long-polling
   // fallback must never be served from its cache.
@@ -24,11 +24,11 @@ export function initRealtime(server: HttpServer, corsOrigins: string[]) {
   });
 
   io.use(async (socket, next) => {
-    const token = socket.handshake.auth?.token;
-    const secret = process.env.JWT_SECRET;
-    if (typeof token !== "string" || !secret) return next(new Error("Not authenticated"));
     try {
-      const { userId } = jwt.verify(token, secret) as { userId: number };
+      // Same check as requireAuth: a revoked session or deleted account is
+      // refused.
+      const userId = await userIdFromToken(sessionToken(socket.request));
+      if (!userId) return next(new Error("Not authenticated"));
       // The role comes from the database, like requireRole, so a role change
       // applies on the next connection.
       const user = await prisma.user.findUnique({
@@ -40,7 +40,7 @@ export function initRealtime(server: HttpServer, corsOrigins: string[]) {
       socket.data.role = user.role;
       next();
     } catch {
-      next(new Error("Invalid or expired token"));
+      next(new Error("Not authenticated"));
     }
   });
 

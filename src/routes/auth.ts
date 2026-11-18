@@ -1,9 +1,14 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
+import {
+  googleAuthLimiter,
+  loginEmailLimiter,
+  loginIpLimiter,
+  registerLimiter,
+} from "../middleware/rateLimit.js";
 import { googleAuthSchema, loginSchema, registerSchema } from "../validation/schemas.js";
 import { verifyGoogleCredential } from "../lib/googleAuth.js";
 import { sendWelcomeEmail } from "../lib/mailer.js";
@@ -12,6 +17,14 @@ import { attachReferral } from "../lib/referrals.js";
 import { TRIAL_DAYS } from "../lib/plans.js";
 import { notifyAdmins } from "../lib/realtime.js";
 import { userResponseFor } from "./profile.js";
+import { passwordProblem } from "../lib/passwordPolicy.js";
+import {
+  endSession,
+  revokeAllSessions,
+  sessionToken,
+  startSession,
+  userIdFromToken,
+} from "../lib/session.js";
 
 // Tells admins someone new signed up.
 function announceSignup(user: { id: number; fullName: string; email: string; role: string }, via: string) {
@@ -44,14 +57,12 @@ function newOwnerAccount(role: string, fullName: string) {
 
 const router = Router();
 
-function signToken(userId: number) {
-  const JWT_SECRET = process.env.JWT_SECRET;
-  if (!JWT_SECRET) return null;
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
-}
+const MISCONFIGURED = { error: "Server misconfigured" };
 
-router.post("/register", validateBody(registerSchema), async (req, res) => {
-  const { fullName, email, password, role, referralCode } = req.body;
+router.post("/register", registerLimiter, validateBody(registerSchema), async (req, res) => {
+  const { fullName, email, password, referralCode } = req.body;
+  // Always a customer: staff roles are only ever granted by an admin.
+  const role = "client";
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing?.deactivatedAt) {
@@ -62,6 +73,9 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
   if (existing) {
     return res.status(409).json({ error: "An account with that email already exists" });
   }
+
+  const problem = await passwordProblem(password, email);
+  if (problem) return res.status(400).json({ error: problem });
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
@@ -74,17 +88,16 @@ router.post("/register", validateBody(registerSchema), async (req, res) => {
     },
   });
 
-  const token = signToken(user.id);
-  if (!token) return res.status(500).json({ error: "Server misconfigured" });
+  if (!startSession(res, user)) return res.status(500).json(MISCONFIGURED);
 
   if (role === "client") sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
   announceSignup(user, "email");
   await attachReferral(user.accountId, referralCode);
 
-  res.status(201).json({ token, user: await userResponseFor(user.id) });
+  res.status(201).json({ user: await userResponseFor(user.id) });
 });
 
-router.post("/login", validateBody(loginSchema), async (req, res) => {
+router.post("/login", loginIpLimiter, loginEmailLimiter, validateBody(loginSchema), async (req, res) => {
   const { email, password } = req.body;
 
   const user = await prisma.user.findUnique({ where: { email } });
@@ -106,13 +119,12 @@ router.post("/login", validateBody(loginSchema), async (req, res) => {
   const returning = !!user.deactivatedAt;
   if (returning) await welcomeBack(user);
 
-  const token = signToken(user.id);
-  if (!token) return res.status(500).json({ error: "Server misconfigured" });
+  if (!startSession(res, user)) return res.status(500).json(MISCONFIGURED);
 
-  res.json({ token, user: await userResponseFor(user.id), welcomeBack: returning });
+  res.json({ user: await userResponseFor(user.id), welcomeBack: returning });
 });
 
-router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
+router.post("/google", googleAuthLimiter, validateBody(googleAuthSchema), async (req, res) => {
   const { credential } = req.body;
 
   let googleUser;
@@ -151,8 +163,7 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
   const returning = !!user.deactivatedAt;
   if (returning) await welcomeBack(user);
 
-  const token = signToken(user.id);
-  if (!token) return res.status(500).json({ error: "Server misconfigured" });
+  if (!startSession(res, user)) return res.status(500).json(MISCONFIGURED);
 
   if (isNewUser) {
     sendWelcomeEmail(user.email, user.fullName, TRIAL_DAYS);
@@ -160,7 +171,47 @@ router.post("/google", validateBody(googleAuthSchema), async (req, res) => {
     await attachReferral(user.accountId, req.body.referralCode);
   }
 
-  res.json({ token, user: await userResponseFor(user.id), welcomeBack: returning });
+  res.json({ user: await userResponseFor(user.id), welcomeBack: returning });
+});
+
+// Who's signed in on this browser, or null for a visitor. Never a 401, so the
+// app can ask on every page load without an error for visitors.
+router.get("/session", async (req, res) => {
+  const userId = await userIdFromToken(sessionToken(req));
+  if (!userId) {
+    if (sessionToken(req)) endSession(res);
+    return res.json({ user: null });
+  }
+  res.json({ user: await userResponseFor(userId) });
+});
+
+// One-off move for browsers signed in before sessions used a cookie: the old
+// token (kept in localStorage) is swapped for the cookie, and the browser
+// then deletes its copy. Only a still-valid token is accepted.
+router.post("/session/migrate", async (req, res) => {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  const userId = await userIdFromToken(token);
+  if (!userId) return res.json({ user: null });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tokenVersion: true },
+  });
+  if (!user || !startSession(res, user)) return res.json({ user: null });
+  res.json({ user: await userResponseFor(userId) });
+});
+
+// Signs out this browser.
+router.post("/logout", (_req, res) => {
+  endSession(res);
+  res.status(204).send();
+});
+
+// Signs out every device, this one included.
+router.post("/logout-all", requireAuth, async (req: AuthedRequest, res) => {
+  await revokeAllSessions(req.userId!);
+  endSession(res);
+  res.status(204).send();
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res) => {

@@ -10,6 +10,7 @@ import { setCreditSettings } from "../lib/creditSettings.js";
 import { getStripe } from "../lib/billing.js";
 import { isValidVolume } from "../lib/plans.js";
 import { priceListResponse } from "./plans.js";
+import { passwordProblem } from "../lib/passwordPolicy.js";
 import { toOnboardingResponse } from "./profile.js";
 import {
   createUserSchema,
@@ -88,6 +89,8 @@ router.post("/users", validateBody(createUserSchema), async (req, res) => {
   const isEditor = role === "editor";
   const canManageBlog = isEditor && req.body.canManageBlog;
   const canManageBrandPages = isEditor && req.body.canManageBrandPages;
+  const problem = await passwordProblem(password, email);
+  if (problem) return res.status(400).json({ error: problem });
   try {
     const user = await prisma.user.create({
       data: {

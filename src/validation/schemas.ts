@@ -9,13 +9,22 @@ const referralCode = Joi.alternatives().try(
   Joi.any().strip()
 );
 
-// Only "client" and "designer" are selectable at signup — "admin" can only
-// be granted later via the admin panel, never by a self-registering user.
+// Self sign-up only ever creates a customer ("client"). Staff roles
+// (designer, editor, admin) get every paid feature and see other customers'
+// requests, so only an admin can create or grant them, via the admin panel.
+// A new password. Longer than 128 adds nothing (bcrypt only reads the first
+// 72 bytes) and would only make hashing slower. The other rules, like the
+// breached-password check, are in lib/passwordPolicy.ts.
+const newPassword = Joi.string().min(8).max(128).required().messages({
+  "string.min": "Your password needs at least 8 characters.",
+  "string.max": "Your password can be at most 128 characters.",
+});
+
 export const registerSchema = Joi.object({
   fullName: Joi.string().trim().min(1).required(),
   email: Joi.string().trim().email().required(),
-  password: Joi.string().min(8).required(),
-  role: Joi.string().valid("client", "designer").default("client"),
+  password: newPassword,
+  role: Joi.string().valid("client").default("client"),
   referralCode,
 });
 
@@ -302,7 +311,7 @@ export const updateUserDetailsSchema = Joi.object({
 export const createUserSchema = Joi.object({
   fullName: Joi.string().trim().min(1).required(),
   email: Joi.string().trim().email().required(),
-  password: Joi.string().min(8).required(),
+  password: newPassword,
   role: Joi.string()
     .valid(...ROLES)
     .default("client"),

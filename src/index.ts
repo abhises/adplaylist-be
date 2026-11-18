@@ -8,6 +8,7 @@ import express, {
   type Response,
 } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import authRoutes from "./routes/auth.js";
 import adsRoutes from "./routes/ads.js";
 import savedRoutes from "./routes/saved.js";
@@ -36,10 +37,39 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// The API sits behind exactly one proxy (nginx), which appends the real
+// client address to X-Forwarded-For. Trusting that one hop makes req.ip the
+// real visitor, and anything a client puts in the header itself is ignored —
+// the rate limits depend on this.
+app.set("trust proxy", 1);
+
 const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
   .map((origin) => origin.trim());
-app.use(cors({ origin: corsOrigins }));
+// Security headers (HSTS, nosniff, no framing, …). The API only serves JSON
+// and /uploads files, so its CSP can be locked right down; uploads are shown
+// on the frontend's own domain, so they may be loaded cross-origin.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+    },
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+// credentials: the sign-in session is a cookie.
+app.use(cors({ origin: corsOrigins, credentials: true }));
+// Another layer against cross-site request forgery on top of the cookie's
+// SameSite=Lax: a browser request that changes something must come from one
+// of our own sites. (Requests without an Origin, like Stripe's webhook or
+// server-to-server calls, carry no cookie to abuse.)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  const safe = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+  if (safe || !origin || corsOrigins.includes(origin)) return next();
+  res.status(403).json({ error: "Request from an unknown site" });
+});
 // Before express.json(): Stripe's signature check needs the raw body.
 app.post("/api/billing/webhook", ...stripeWebhook);
 app.use(express.json());
@@ -89,13 +119,9 @@ app.use("/api/referrals", referralsRoutes);
 function clientFacingError(err: unknown): { status: number; error: string } | null {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return null;
   switch (err.code) {
-    case "P2000": {
-      const column = /Column: (\w+)/.exec(err.message)?.[1];
-      return {
-        status: 400,
-        error: column ? `${column} is too long` : "A value is too long",
-      };
-    }
+    // The column name stays in the server log, not the response.
+    case "P2000":
+      return { status: 400, error: "One of the values is too long" };
     case "P2002":
       return { status: 409, error: "That already exists" };
     case "P2025":

@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { MailError, mailConfigured, sendMail } from "../lib/mailer.js";
 import { requireAuth, requireRole, type AuthedRequest } from "../middleware/auth.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
+import { contactLimiter } from "../middleware/rateLimit.js";
 import {
   contactReplySchema,
   contactSchema,
@@ -13,24 +14,6 @@ import {
 } from "../validation/schemas.js";
 
 const router = Router();
-
-// Enquiries per visitor allowed in the window below. The API sits behind a
-// proxy, so the visitor is told apart by X-Forwarded-For where it's sent.
-const CONTACT_LIMIT = 20;
-const CONTACT_WINDOW_MS = 10 * 60 * 1000;
-const contactHits = new Map<string, number[]>();
-
-function contactAllowed(key: string) {
-  const now = Date.now();
-  const recent = (contactHits.get(key) ?? []).filter((t) => now - t < CONTACT_WINDOW_MS);
-  if (recent.length >= CONTACT_LIMIT) {
-    contactHits.set(key, recent);
-    return false;
-  }
-  recent.push(now);
-  contactHits.set(key, recent);
-  return true;
-}
 
 type ReplyWithSender = ContactReply & { sentBy?: Pick<User, "fullName"> | null };
 
@@ -69,18 +52,11 @@ function quoted(enquiry: ContactEnquiry) {
 // Public: the landing page's "Talk to us" form, and a brand page's "Request
 // ads". The team is told by email (reply-to the sender), and the enquiry
 // waits in Admin → Contact.
-router.post("/", validateBody(contactSchema), async (req, res) => {
+router.post("/", contactLimiter, validateBody(contactSchema), async (req, res) => {
   const { name, email, company, volume, message, website, source } = req.body;
   const fromBrandPage = source === "brand-page";
   // A filled honeypot is a bot: answer as if it worked and keep nothing.
   if (website) return res.status(201).json({ ok: true });
-
-  const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",")[0]?.trim();
-  if (!contactAllowed(forwarded || req.ip || "unknown")) {
-    return res
-      .status(429)
-      .json({ error: "Too many messages. Please try again in a few minutes." });
-  }
 
   const enquiry = await prisma.contactEnquiry.create({
     data: {
