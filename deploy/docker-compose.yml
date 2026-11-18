@@ -1,0 +1,56 @@
+# Lives on the server at /home/ubuntu/adplaylist/docker-compose.yml (copied
+# there by the deploy workflow). Runs as its own compose project
+# ("adplaylist") with its own network, separate from the brasq containers.
+name: adplaylist
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: adplaylist-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      # Named volume: survives container restarts, rebuilds and image
+      # upgrades. Only `docker volume rm adplaylist_db_data` deletes it.
+      - db_data:/var/lib/mysql
+      - ./mariadb.cnf:/etc/mysql/conf.d/zz-adplaylist.cnf:ro
+    mem_limit: 300m
+    # Loopback only (for backups / admin over SSH); never on the internet.
+    ports:
+      - "127.0.0.1:3307:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: adplaylist-be:${API_TAG:-latest}
+    container_name: adplaylist-api
+    restart: unless-stopped
+    env_file: .env.api
+    environment:
+      DATABASE_URL: mysql://${DB_USER}:${DB_PASSWORD}@db:3306/${DB_NAME}
+      PORT: "5000"
+      # The server has ~1 GB RAM shared with another site; keep Node's heap small.
+      NODE_OPTIONS: --max-old-space-size=448
+    mem_limit: 640m
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5001:5000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  db_data:
+    name: adplaylist_db_data

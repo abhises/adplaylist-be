@@ -1,45 +1,92 @@
-name: Deploy backend to Cloudways
+name: Deploy backend
 
-# Runs whenever main is updated (a direct push, or a merged PR) and deploys
-# the current main to the Cloudways server over SSH, then restarts it under
-# pm2. See DEPLOY.md in this repo for the one-time server/secrets setup this
-# workflow depends on.
+# On every push to main (or a manual run): build the Docker image here on
+# GitHub's runner, copy it to the server, run database migrations, and swap
+# the API container. The server (1 GB RAM, shared with another site) never
+# builds anything. See DEPLOY.md for the one-time server setup and secrets.
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
 
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.sha }}
     steps:
-      - name: Deploy over SSH
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: adplaylist-be:${{ github.sha }}
+          outputs: type=docker,dest=/tmp/adplaylist-be.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compress image
+        run: |
+          mkdir -p ship
+          gzip -c /tmp/adplaylist-be.tar > ship/adplaylist-be.tar.gz
+          cp deploy/docker-compose.yml deploy/mariadb.cnf ship/
+
+      - name: Copy image and compose files to the server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: ship/*
+          target: adplaylist/incoming
+          strip_components: 1
+          overwrite: true
+
+      - name: Migrate and restart on the server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.CLOUDWAYS_SSH_HOST }}
-          username: ${{ secrets.CLOUDWAYS_SSH_USER }}
-          key: ${{ secrets.CLOUDWAYS_SSH_KEY }}
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
+          envs: TAG
           script: |
             set -e
-            # This Cloudways app user can't write to $HOME (only public_html/
-            # private_html/tmp), and the system Node (v20) is too old for this
-            # repo's TypeScript, so pm2/npm-cache/Node itself all live under
-            # private_html via nvm. See DEPLOY.md for how that was set up.
-            export NVM_DIR=~/private_html/.nvm
-            export NPM_CONFIG_CACHE=~/private_html/.npm-cache
-            export PM2_HOME=~/private_html/.pm2
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm use 22 > /dev/null
-            PM2=~/private_html/.npm-global/bin/pm2
+            cd ~/adplaylist
+            gunzip -c incoming/adplaylist-be.tar.gz | docker load
+            mv incoming/docker-compose.yml incoming/mariadb.cnf .
+            rm -f incoming/adplaylist-be.tar.gz
 
-            cd "${{ secrets.BE_DEPLOY_PATH }}"
-            git fetch origin main
-            git reset --hard origin/main
-            npm ci
-            npm run build
-            npm run db:migrate
-            "$PM2" describe adplaylist-be > /dev/null \
-              && "$PM2" restart adplaylist-be --update-env \
-              || "$PM2" start dist/index.js --name adplaylist-be
-            "$PM2" save
+            PREV=$(grep '^API_TAG=' .env | cut -d= -f2)
+            sed -i "s/^API_TAG=.*/API_TAG=$TAG/" .env
+
+            docker compose up -d db
+            docker compose run --rm --no-deps api npx prisma migrate deploy
+            docker compose up -d --no-deps api
+
+            # Wait for the new container to report healthy; roll back if not.
+            for i in $(seq 1 30); do
+              s=$(docker inspect -f '{{.State.Health.Status}}' adplaylist-api)
+              [ "$s" = healthy ] && break
+              sleep 3
+            done
+            if [ "$s" != healthy ]; then
+              echo "New API container is $s — rolling back to $PREV"
+              docker logs --tail 50 adplaylist-api || true
+              sed -i "s/^API_TAG=.*/API_TAG=$PREV/" .env
+              docker compose up -d --no-deps api
+              exit 1
+            fi
+            curl -fsS http://127.0.0.1:5001/api/health
+
+            # Keep the current and previous image (for rollback); drop older ones.
+            docker images adplaylist-be --format '{{.Tag}}' \
+              | grep -vx -e "$TAG" -e "$PREV" \
+              | xargs -r -I{} docker rmi adplaylist-be:{} || true

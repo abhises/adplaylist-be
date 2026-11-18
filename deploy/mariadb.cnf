@@ -1,0 +1,11 @@
+# Small-footprint settings: the server has ~1 GB RAM shared with another site.
+[mysqld]
+innodb_buffer_pool_size = 96M
+innodb_log_buffer_size = 8M
+performance_schema = OFF
+max_connections = 40
+key_buffer_size = 8M
+tmp_table_size = 16M
+max_heap_table_size = 16M
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci

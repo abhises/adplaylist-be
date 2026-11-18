@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.agents
+.windsurf
+node_modules
+dist
+uploads
+src/generated
+.env
+.env.*
+!.env.example
+deploy
+*.md
